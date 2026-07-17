@@ -10,6 +10,7 @@ import com.netguardian.app.util.TrafficFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 统计页面ViewModel

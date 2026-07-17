@@ -202,7 +202,7 @@ private fun TimePeriodTabs(
                             val indicatorWidth = placeable.width
                             layout(constraints.maxWidth, placeable.height) {
                                 placeable.place(
-                                    x = (selectedTab.left + selectedTab.right - indicatorWidth) / 2,
+                                    x = (selectedTab.left.roundToPx() + selectedTab.right.roundToPx() - indicatorWidth) / 2,
                                     y = 0
                                 )
                             }
