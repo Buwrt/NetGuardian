@@ -73,24 +73,20 @@ fun SettingsScreen(
         topBar = {
             SettingsTopBar()
         },
-        snackbarHost = { hostState ->
+        snackbarHost = {
             message?.let {
                 LaunchedEffect(it) {
-                    kotlinx.coroutines.MainScope().launch {
-                        kotlinx.coroutines.delay(2000)
-                        viewModel.clearMessage()
-                    }
+                    kotlinx.coroutines.delay(2000)
+                    viewModel.clearMessage()
                 }
-                Snackbar(snackbarHostState = hostState) { Text(it) }
+                Snackbar { Text(it) }
             }
             errorMessage?.let {
                 LaunchedEffect(it) {
-                    kotlinx.coroutines.MainScope().launch {
-                        kotlinx.coroutines.delay(3000)
-                        viewModel.clearError()
-                    }
+                    kotlinx.coroutines.delay(3000)
+                    viewModel.clearError()
                 }
-                Snackbar(snackbarHostState = hostState) { Text("错误: $it") }
+                Snackbar { Text("错误: $it") }
             }
         }
     ) { paddingValues ->
@@ -162,7 +158,7 @@ fun SettingsScreen(
                         subtitle = "流量超限时自动断开网络",
                         checked = autoDisconnect,
                         onCheckedChange = { viewModel.setAutoDisconnect(it) },
-                        icon = Icons.Default.DisableByDefault,
+                        icon = Icons.Default.Block,
                         iconColor = TrafficRed
                     )
 
@@ -323,6 +319,7 @@ fun SettingsScreen(
 /**
  * 设置页顶部标题栏
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsTopBar() {
     TopAppBar(

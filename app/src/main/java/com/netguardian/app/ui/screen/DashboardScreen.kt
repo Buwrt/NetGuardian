@@ -50,7 +50,6 @@ fun DashboardScreen(
     val isMonitorRunning by viewModel.isMonitorRunning.collectAsStateWithLifecycle()
     val networkType by viewModel.networkType.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
-    val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
 
     // 刷新状态
@@ -70,7 +69,7 @@ fun DashboardScreen(
                         isRefreshingState = false
                     }
                 },
-                isRefreshing = isRefreshingState || isRefreshing
+                isRefreshing = isRefreshingState
             )
         }
     ) { paddingValues ->
@@ -149,6 +148,7 @@ fun DashboardScreen(
 /**
  * 顶部标题栏
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DashboardTopBar(
     networkType: String,

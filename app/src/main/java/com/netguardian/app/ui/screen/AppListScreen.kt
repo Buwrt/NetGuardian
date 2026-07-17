@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sort
@@ -150,6 +151,7 @@ fun AppListScreen(
 /**
  * 顶部标题栏
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AppListTopBar(
     onBack: () -> Unit,

@@ -82,6 +82,7 @@ fun SpeedMeterWidget(
         contentAlignment = Alignment.Center
     ) {
         // 绘制圆形进度弧线
+        val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
         Canvas(
             modifier = Modifier.fillMaxSize()
         ) {
@@ -93,7 +94,7 @@ fun SpeedMeterWidget(
 
             // 1. 绘制底层灰色圆环（轨道）
             drawArc(
-                color = MaterialTheme.colorScheme.surfaceVariant,
+                color = surfaceVariant,
                 startAngle = 135f,
                 sweepAngle = 270f,
                 useCenter = false,
@@ -232,12 +233,13 @@ fun MiniSpeedMeter(
         verticalAlignment = Alignment.CenterVertically
     ) {
         // 小型进度弧
+        val surfaceVariantColor = MaterialTheme.colorScheme.surfaceVariant
         Canvas(
             modifier = Modifier.size(48.dp)
         ) {
             val arcSize = 48.dp.toPx()
             drawArc(
-                color = MaterialTheme.colorScheme.surfaceVariant,
+                color = surfaceVariantColor,
                 startAngle = 135f,
                 sweepAngle = 270f,
                 useCenter = false,

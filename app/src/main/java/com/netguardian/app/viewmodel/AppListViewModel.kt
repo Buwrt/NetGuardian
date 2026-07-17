@@ -8,6 +8,7 @@ import com.netguardian.app.model.AppTrafficInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 应用列表页面ViewModel
@@ -28,6 +29,16 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
 
     /** 流量监控引擎 */
     private val trafficEngine = TrafficMonitorEngine(application)
+
+    // ==================== 排序与过滤 ====================
+
+    /** 排序方式 */
+    private val _sortMode = MutableStateFlow(SortMode.BY_TRAFFIC)
+    val sortMode: StateFlow<SortMode> = _sortMode.asStateFlow()
+
+    /** 搜索关键词 */
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
     // ==================== 应用列表数据 ====================
 
@@ -65,16 +76,6 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
         SharingStarted.WhileSubscribed(5000),
         emptyList()
     )
-
-    // ==================== 排序与过滤 ====================
-
-    /** 排序方式 */
-    private val _sortMode = MutableStateFlow(SortMode.BY_TRAFFIC)
-    val sortMode: StateFlow<SortMode> = _sortMode.asStateFlow()
-
-    /** 搜索关键词 */
-    private val _searchQuery = MutableStateFlow("")
-    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
     // ==================== 统计信息 ====================
 

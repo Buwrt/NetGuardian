@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -135,10 +136,8 @@ fun StatisticsScreen(
         // 错误提示
         errorMessage?.let {
             LaunchedEffect(it) {
-                kotlinx.coroutines.MainScope().launch {
-                    kotlinx.coroutines.delay(3000)
-                    viewModel.clearError()
-                }
+                kotlinx.coroutines.delay(3000)
+                viewModel.clearError()
             }
             Snackbar(modifier = Modifier.padding(16.dp)) {
                 Text(it)
@@ -150,6 +149,7 @@ fun StatisticsScreen(
 /**
  * 顶部标题栏
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun StatisticsTopBar() {
     TopAppBar(
@@ -194,10 +194,19 @@ private fun TimePeriodTabs(
             divider = {},
             indicator = { tabPositions ->
                 if (tabPositions.isNotEmpty()) {
+                    val selectedIndex = StatisticsViewModel.TimePeriod.entries.indexOf(currentPeriod)
+                    val selectedTab = tabPositions[selectedIndex]
                     TabRowDefaults.SecondaryIndicator(
-                        modifier = Modifier.tabIndicatorOffset(
-                            tabPositions[StatisticsViewModel.TimePeriod.entries.indexOf(currentPeriod)]
-                        ),
+                        modifier = Modifier.layout { measurable, constraints ->
+                            val placeable = measurable.measure(constraints)
+                            val indicatorWidth = placeable.width
+                            layout(constraints.maxWidth, placeable.height) {
+                                placeable.place(
+                                    x = (selectedTab.left + selectedTab.right - indicatorWidth) / 2,
+                                    y = 0
+                                )
+                            }
+                        },
                         color = MaterialTheme.colorScheme.primary
                     )
                 }

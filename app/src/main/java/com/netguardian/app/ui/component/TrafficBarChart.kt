@@ -290,8 +290,8 @@ fun VerticalBarChart(
                 .height(chartHeight)
         ) {
             // Y轴参考线
+            val lineColor = MaterialTheme.colorScheme.outlineVariant
             Canvas(modifier = Modifier.fillMaxSize()) {
-                val lineColor = MaterialTheme.colorScheme.outlineVariant
                 // 绘制3条水平参考线
                 for (i in 1..3) {
                     val y = size.height * (1f - i / 4f)

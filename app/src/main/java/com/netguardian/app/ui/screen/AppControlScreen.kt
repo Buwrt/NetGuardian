@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -178,6 +179,7 @@ fun AppControlScreen(
 /**
  * 顶部标题栏
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AppControlTopBar(
     appName: String,
