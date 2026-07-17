@@ -216,7 +216,7 @@ class ShizukuManager private constructor() {
 
             // 通过Shizuku远程执行shell命令
             val fullCommand = commands.joinToString(" && ")
-            val process = Shizuku.newProcess(arrayOf("sh", "-c", fullCommand), null, null)
+            val process = executeShizukuCommand(fullCommand)
             val output = process.inputStream.bufferedReader().readText()
             val exitCode = process.waitFor()
 
@@ -256,7 +256,7 @@ class ShizukuManager private constructor() {
             )
 
             val fullCommand = commands.joinToString(" ; ")
-            val process = Shizuku.newProcess(arrayOf("sh", "-c", fullCommand), null, null)
+            val process = executeShizukuCommand(fullCommand)
             process.waitFor()
 
             // 删除不存在的规则会返回非零，但不算失败
@@ -278,10 +278,7 @@ class ShizukuManager private constructor() {
         if (!isShizukuAvailable()) return false
 
         return try {
-            val process = Shizuku.newProcess(
-                arrayOf("sh", "-c", "am force-stop $packageName"),
-                null, null
-            )
+            val process = executeShizukuCommand("am force-stop $packageName")
             val exitCode = process.waitFor()
             val success = exitCode == 0
             Log.i(TAG, "Shizuku强制停止 $packageName 结果: $success")
@@ -300,10 +297,7 @@ class ShizukuManager private constructor() {
      */
     private fun getUidByPackageShizuku(packageName: String): Int {
         return try {
-            val process = Shizuku.newProcess(
-                arrayOf("sh", "-c", "dumpsys package $packageName | grep userId="),
-                null, null
-            )
+            val process = executeShizukuCommand("dumpsys package $packageName | grep userId=")
             val output = process.inputStream.bufferedReader().readText().trim()
             process.waitFor()
 
@@ -327,10 +321,7 @@ class ShizukuManager private constructor() {
 
         return try {
             val uidStatPath = "/proc/uid_stat/$uid/"
-            val process = Shizuku.newProcess(
-                arrayOf("sh", "-c", "cat ${uidStatPath}tcp_rcv && echo ':::' && cat ${uidStatPath}tcp_snd"),
-                null, null
-            )
+            val process = executeShizukuCommand("cat ${uidStatPath}tcp_rcv && echo ':::' && cat ${uidStatPath}tcp_snd")
             val output = process.inputStream.bufferedReader().readText().trim()
             process.waitFor()
 
@@ -357,16 +348,37 @@ class ShizukuManager private constructor() {
         }
 
         return try {
-            val process = Shizuku.newProcess(
-                arrayOf("sh", "-c", command),
-                null, null
-            )
+            val process = executeShizukuCommand(command)
             val output = process.inputStream.bufferedReader().readText().trim()
             process.waitFor()
             output.ifEmpty { null }
         } catch (e: Exception) {
             Log.e(TAG, "Shizuku执行命令异常: ${e.message}")
             null
+        }
+    }
+
+    /**
+     * 通过Shizuku远程执行shell命令的内部方法
+     * Shizuku.newProcess 在 API 13.x 中是 private，使用反射调用并 fallback 到本地命令
+     *
+     * @param command 要执行的shell命令
+     * @return Process 实例
+     */
+    @Suppress("PrivateApi")
+    internal fun executeShizukuCommand(command: String): Process {
+        return try {
+            val method = Shizuku::class.java.getDeclaredMethod(
+                "newProcess",
+                Array<String>::class.java,
+                Array<String>::class.java
+            )
+            method.isAccessible = true
+            @Suppress("UNCHECKED_CAST")
+            method.invoke(null, arrayOf("sh", "-c", command), emptyArray<String>()) as Process
+        } catch (e: Exception) {
+            Log.w(TAG, "Shizuku.newProcess 反射调用失败，fallback 到本地命令: ${e.message}")
+            Runtime.getRuntime().exec(arrayOf("sh", "-c", command))
         }
     }
 

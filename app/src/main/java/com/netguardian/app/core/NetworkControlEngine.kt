@@ -349,10 +349,7 @@ class NetworkControlEngine(private val context: Context) {
      * Shizuku模式下创建进程的辅助方法
      */
     private fun Shizuku_newProcess(command: String): Process {
-        return rikka.shizuku.Shizuku.newProcess(
-            arrayOf("sh", "-c", command),
-            null, null
-        )
+        return ShizukuManager.getInstance().executeShizukuCommand(command)
     }
 
     /**

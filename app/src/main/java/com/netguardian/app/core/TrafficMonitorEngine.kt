@@ -324,7 +324,7 @@ class TrafficMonitorEngine(private val context: Context) {
      */
     fun getInstalledApps(context: Context, includeSystemApps: Boolean = false): List<com.netguardian.app.data.AppInfo> {
         val pm = context.packageManager
-        val packages = pm.getInstalledPackages(PackageInfo.MATCH_UNINSTALLED_PACKAGES)
+        val packages = pm.getInstalledPackages(0x00000200) // MATCH_UNINSTALLED_PACKAGES
         val appList = mutableListOf<com.netguardian.app.data.AppInfo>()
 
         for (packageInfo in packages) {

@@ -10,6 +10,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -139,7 +140,7 @@ private fun MainContent(
             iconResId = R.drawable.ic_apps
         ),
         BottomNavItem(
-            route = Routes.CONTROL_MARKER,
+            route = Routes.APP_CONTROL_PREFIX,
             label = "控制",
             iconResId = R.drawable.ic_shield,
             enabled = false // 控制页由应用列表进入，不在底部导航直接显示

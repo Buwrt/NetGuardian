@@ -1,6 +1,6 @@
 package com.netguardian.app.ui.screen
 
-import androidx.compose.animation.animateFloatAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
@@ -71,46 +71,6 @@ fun AppControlScreen(
                 appName = appName,
                 onBack = onBack
             )
-        },
-        snackbarHost = { hostState ->
-            // 操作结果提示
-            message?.let {
-                LaunchedEffect(it) {
-                    kotlinx.coroutines.MainScope().launch {
-                        kotlinx.coroutines.delay(2000)
-                        viewModel.clearMessage()
-                    }
-                }
-                Snackbar(
-                    snackbarHostState = hostState,
-                    action = {
-                        TextButton(onClick = { viewModel.clearMessage() }) {
-                            Text("关闭")
-                        }
-                    }
-                ) {
-                    Text(it)
-                }
-            }
-            // 错误提示
-            errorMessage?.let {
-                LaunchedEffect(it) {
-                    kotlinx.coroutines.MainScope().launch {
-                        kotlinx.coroutines.delay(3000)
-                        viewModel.clearError()
-                    }
-                }
-                Snackbar(
-                    snackbarHostState = hostState,
-                    action = {
-                        TextButton(onClick = { viewModel.clearError() }) {
-                            Text("关闭")
-                        }
-                    }
-                ) {
-                    Text("错误: $it")
-                }
-            }
         }
     ) { paddingValues ->
         if (isLoading) {
@@ -235,7 +195,7 @@ private fun AppControlTopBar(
         navigationIcon = {
             IconButton(onClick = onBack) {
                 Icon(
-                    imageVector = androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack,
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "返回",
                     tint = MaterialTheme.colorScheme.onSurface
                 )
@@ -270,7 +230,7 @@ private fun AppInfoHeader(
                         android.widget.ImageView(context).apply {
                             setImageDrawable(icon)
                             clipToOutline = true
-                            outlineProvider = android.view.ViewOutlineProvider.OVAL
+                            outlineProvider = android.view.ViewOutlineProvider.BOUNDS
                         }
                     },
                     modifier = Modifier

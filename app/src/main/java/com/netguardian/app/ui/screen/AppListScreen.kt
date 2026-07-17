@@ -7,10 +7,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material3.*
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 import com.netguardian.app.model.AppControlState
 import com.netguardian.app.ui.component.AppTrafficItem
 import com.netguardian.app.util.TrafficFormatter
@@ -54,11 +55,12 @@ fun AppListScreen(
     // 排序菜单展开状态
     var showSortMenu by remember { mutableStateOf(false) }
 
-    // 下拉刷新状态
-    var isPullRefreshing by remember { mutableStateOf(false) }
-
     // 搜索栏展开状态
     var isSearchExpanded by remember { mutableStateOf(false) }
+
+    // 刷新状态
+    var isRefreshingState by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
@@ -66,7 +68,16 @@ fun AppListScreen(
                 AppListTopBar(
                     onBack = onBack,
                     activeAppCount = activeAppCount,
-                    totalTraffic = totalTraffic
+                    totalTraffic = totalTraffic,
+                    onRefresh = {
+                        isRefreshingState = true
+                        viewModel.refresh()
+                        scope.launch {
+                            kotlinx.coroutines.delay(800)
+                            isRefreshingState = false
+                        }
+                    },
+                    isRefreshing = isRefreshingState || isRefreshing
                 )
                 // 搜索栏（始终显示，可折叠）
                 SearchAndSortBar(
@@ -85,16 +96,7 @@ fun AppListScreen(
             }
         }
     ) { paddingValues ->
-        PullToRefreshBox(
-            isRefreshing = isPullRefreshing || isRefreshing,
-            onRefresh = {
-                isPullRefreshing = true
-                viewModel.refresh()
-                kotlinx.coroutines.MainScope().launch {
-                    kotlinx.coroutines.delay(800)
-                    isPullRefreshing = false
-                }
-            },
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
@@ -123,6 +125,16 @@ fun AppListScreen(
                     )
                 }
             }
+
+            // 刷新指示器
+            if (isRefreshingState || isRefreshing) {
+                CircularProgressIndicator(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 8.dp),
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
         }
     }
 
@@ -142,7 +154,9 @@ fun AppListScreen(
 private fun AppListTopBar(
     onBack: () -> Unit,
     activeAppCount: Int,
-    totalTraffic: Long
+    totalTraffic: Long,
+    onRefresh: () -> Unit = {},
+    isRefreshing: Boolean = false
 ) {
     TopAppBar(
         title = {
@@ -170,9 +184,22 @@ private fun AppListTopBar(
         navigationIcon = {
             IconButton(onClick = onBack) {
                 Icon(
-                    imageVector = androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack,
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "返回",
                     tint = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        },
+        actions = {
+            // 刷新按钮
+            IconButton(
+                onClick = onRefresh,
+                enabled = !isRefreshing
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = "刷新",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         },

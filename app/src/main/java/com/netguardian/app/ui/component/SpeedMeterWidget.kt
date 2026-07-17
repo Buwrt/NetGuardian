@@ -21,6 +21,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.netguardian.app.ui.theme.TrafficBlue
+import com.netguardian.app.ui.theme.TrafficCyan
 import com.netguardian.app.ui.theme.TrafficGreen
 import com.netguardian.app.ui.theme.TrafficOrange
 import com.netguardian.app.ui.theme.UploadPurple
@@ -44,7 +45,7 @@ fun SpeedMeterWidget(
     modifier: Modifier = Modifier
 ) {
     // 下载速率动画 - 平滑过渡
-    val downloadAnimatable = rememberInfiniteTransition(label = "downloadPulse")
+    val infiniteTransition = rememberInfiniteTransition(label = "downloadPulse")
     val downloadProgress by animateFloatAsState(
         targetValue = (downloadSpeed.toFloat() / maxSpeed).coerceIn(0f, 1f),
         animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
@@ -59,11 +60,10 @@ fun SpeedMeterWidget(
     )
 
     // 脉冲动画（当有活跃流量时）
-    val pulsePhase by downloadAnimatable.animateFloat(
+    val pulsePhase by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
-        infiniteAnimationSpec = repeatable(
-            iterations = Int.MAX_VALUE,
+        animationSpec = infiniteRepeatable(
             animation = tween(2000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),

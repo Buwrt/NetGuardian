@@ -49,7 +49,6 @@ fun AppTrafficItem(
         } else {
             MaterialTheme.colorScheme.surface
         },
-        animationSpec = MaterialTheme.motionScheme.default,
         label = "cardColor"
     )
 
@@ -176,7 +175,7 @@ private fun AppIcon(
                 android.widget.ImageView(context).apply {
                     setImageDrawable(icon)
                     clipToOutline = true
-                    outlineProvider = android.view.ViewOutlineProvider.OVAL
+                    outlineProvider = android.view.ViewOutlineProvider.BOUNDS
                 }
             },
             modifier = modifier.clip(CircleShape)

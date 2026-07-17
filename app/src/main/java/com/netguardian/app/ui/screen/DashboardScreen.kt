@@ -1,7 +1,7 @@
 package com.netguardian.app.ui.screen
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.animateFloatAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -10,18 +10,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.*
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 import com.netguardian.app.ui.component.SpeedMeterWidget
 import com.netguardian.app.ui.theme.*
 import com.netguardian.app.util.Constants
@@ -54,25 +53,28 @@ fun DashboardScreen(
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
 
-    // 下拉刷新状态
-    var isPullRefreshing by remember { mutableStateOf(false) }
+    // 刷新状态
+    var isRefreshingState by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     // Scaffold结构
     Scaffold(
         topBar = {
-            DashboardTopBar(networkType = networkType)
+            DashboardTopBar(
+                networkType = networkType,
+                onRefresh = {
+                    isRefreshingState = true
+                    viewModel.refreshAll()
+                    scope.launch {
+                        kotlinx.coroutines.delay(1000)
+                        isRefreshingState = false
+                    }
+                },
+                isRefreshing = isRefreshingState || isRefreshing
+            )
         }
     ) { paddingValues ->
-        PullToRefreshBox(
-            isRefreshing = isPullRefreshing || isRefreshing,
-            onRefresh = {
-                isPullRefreshing = true
-                viewModel.refreshAll()
-                kotlinx.coroutines.MainScope().launch {
-                    kotlinx.coroutines.delay(1000)
-                    isPullRefreshing = false
-                }
-            },
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
@@ -129,13 +131,13 @@ fun DashboardScreen(
             // 错误提示
             errorMessage?.let { error ->
                 LaunchedEffect(error) {
-                    kotlinx.coroutines.MainScope().launch {
-                        kotlinx.coroutines.delay(3000)
-                        viewModel.clearError()
-                    }
+                    kotlinx.coroutines.delay(3000)
+                    viewModel.clearError()
                 }
                 Snackbar(
-                    modifier = Modifier.padding(16.dp)
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(16.dp)
                 ) {
                     Text(error)
                 }
@@ -148,7 +150,11 @@ fun DashboardScreen(
  * 顶部标题栏
  */
 @Composable
-private fun DashboardTopBar(networkType: String) {
+private fun DashboardTopBar(
+    networkType: String,
+    onRefresh: () -> Unit = {},
+    isRefreshing: Boolean = false
+) {
     TopAppBar(
         title = {
             Column {
@@ -165,6 +171,17 @@ private fun DashboardTopBar(networkType: String) {
             }
         },
         actions = {
+            // 刷新按钮
+            IconButton(
+                onClick = onRefresh,
+                enabled = !isRefreshing
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = "刷新",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             // 网络类型标签
             Surface(
                 modifier = Modifier.padding(end = 8.dp),
