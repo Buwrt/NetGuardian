@@ -31,16 +31,13 @@ import androidx.core.view.WindowCompat
  * 扩展 ColorScheme，提供更丰富的语义化颜色访问
  */
 val ColorScheme.cardBackground: Color
-    @Composable
-    get() = if (isSystemInDarkTheme()) DarkSurfaceContainerLow else Color.White
+    get() = surfaceContainerLow
 
 val ColorScheme.cardBorder: Color
-    @Composable
-    get() = if (isSystemInDarkTheme()) DarkOutlineVariant else OutlineVariant
+    get() = outlineVariant.copy(alpha = 0.3f)
 
 val ColorScheme.divider: Color
-    @Composable
-    get() = if (isSystemInDarkTheme()) DarkOutlineVariant else OutlineVariant
+    get() = outlineVariant.copy(alpha = 0.5f)
 
 // ==================== 浅色主题配色方案 ====================
 

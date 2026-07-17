@@ -6,6 +6,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.animateitem
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -74,7 +76,7 @@ import com.netguardian.app.model.AppTrafficInfo
 import com.netguardian.app.ui.theme.TrafficBlue
 import com.netguardian.app.ui.theme.TrafficGreen
 import com.netguardian.app.ui.theme.TrafficValueTextStyle
-import com.netguardian.app.ui.theme.cardBackground
+
 import com.netguardian.app.util.TrafficFormatter
 import com.netguardian.app.viewmodel.AppListViewModel
 import kotlinx.coroutines.delay
@@ -209,7 +211,7 @@ fun AppListScreen(
                         slideInVertically(
                             animationSpec = tween(200, easing = FastOutSlowInEasing)
                         ) { -it },
-                exit = fadeIn(animationSpec = tween(200))
+                exit = fadeOut(animationSpec = tween(200))
             ) {
                 SearchBar(
                     query = searchQuery,
@@ -460,7 +462,7 @@ private fun AppTrafficList(
                     ),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.elevatedCardColors(
-                    containerColor = MaterialTheme.colorScheme.cardBackground
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                 )
             ) {
                 AppTrafficCardItem(

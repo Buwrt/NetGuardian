@@ -245,12 +245,8 @@ class CarrierManager(private val context: Context) {
     private fun getDefaultSubscriptionId(): Int {
         return try {
             val sm = subscriptionManager ?: return SubscriptionManager.INVALID_SUBSCRIPTION_ID
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-                sm.defaultDataSubscriptionId
-            } else {
-                @Suppress("DEPRECATION")
-                SubscriptionManager.getDefaultSubscriptionId()
-            }
+            sm.activeSubscriptionInfoList?.firstOrNull()?.subscriptionId
+                ?: SubscriptionManager.INVALID_SUBSCRIPTION_ID
         } catch (e: Exception) {
             SubscriptionManager.INVALID_SUBSCRIPTION_ID
         }

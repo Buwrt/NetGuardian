@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.withTransaction
 import com.netguardian.app.model.AppControlState
 import com.netguardian.app.model.TrafficLimit
 import com.netguardian.app.model.TrafficRecord

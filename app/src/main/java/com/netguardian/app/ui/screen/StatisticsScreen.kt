@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -541,7 +542,7 @@ private fun TrafficTrendLineChart(
             // Y轴刻度值
             val yValue = maxValue * i / 4f
             val yLabel = TrafficFormatter.formatBytes(yValue.toLong())
-            val yTextLayout = textMeasurer.measure(yLabel, fontSize = 9.sp)
+            val yTextLayout = textMeasurer.measure(yLabel, style = TextStyle(fontSize = 9.sp))
             drawText(
                 textLayoutResult = yTextLayout,
                 topLeft = Offset(
@@ -556,7 +557,7 @@ private fun TrafficTrendLineChart(
         trendData.forEachIndexed { index, point ->
             val x = chartPaddingLeft + index * xStep
             val label = point.label.takeLast(5) // MM-DD
-            val xTextLayout = textMeasurer.measure(label, fontSize = 9.sp)
+            val xTextLayout = textMeasurer.measure(label, style = TextStyle(fontSize = 9.sp))
             drawText(
                 textLayoutResult = xTextLayout,
                 topLeft = Offset(

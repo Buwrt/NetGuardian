@@ -61,7 +61,7 @@ fun AppTrafficItem(
         targetValue = if (isBlocked) {
             MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
         } else {
-            MaterialTheme.colorScheme.cardBackground
+            MaterialTheme.colorScheme.surfaceContainerLow
         },
         label = "cardColor"
     )
