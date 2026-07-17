@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 备份规则描述符: 定义需要备份和排除的文件 -->
+<full-backup-content>
+    <!-- 包含SharedPreferences中的用户配置 -->
+    <include domain="sharedpref" path="netguardian_preferences.xml" />
+    <!-- 排除数据库中的实时缓存数据 -->
+    <exclude domain="database" path="traffic_cache.db" />
+    <!-- 排除日志文件 -->
+    <exclude domain="external" path="netguardian/logs/" />
+</full-backup-content>

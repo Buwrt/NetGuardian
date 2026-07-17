@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 盾牌图标: 表示安全防护 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M12,2 L3,7 L3,12 C3,16.97 6.94,21.56 12,23 C17.06,21.56 21,16.97 21,12 L21,7 Z" />
+    <path
+        android:fillColor="#1B6EF3"
+        android:pathData="M12,4.5L5,8.5L5,12C5,16.07 8.13,19.87 12,21 C15.87,19.87 19,16.07 19,12L19,8.5Z" />
+    <!-- 盾牌中心对勾 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M10,15.5L7,12.5L8.41,11.09L10,12.67L15.59,7.09L17,8.5Z" />
+</vector>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 启动器图标渐变背景: 从蓝色(#1B6EF3)渐变到青绿色(#00D4AA) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 渐变背景填充 -->
+    <path
+        android:fillColor="#1B6EF3"
+        android:pathData="M0,0h108v108H0z" />
+    <path
+        android:fillColor="#00D4AA"
+        android:fillAlpha="0.6"
+        android:pathData="M0,54 C18,36 36,72 54,54 C72,36 90,72 108,54 L108,108 L0,108 Z" />
+    <path
+        android:fillColor="#00D4AA"
+        android:fillAlpha="0.3"
+        android:pathData="M0,72 C27,54 54,90 81,72 C90,63 99,81 108,72 L108,108 L0,108 Z" />
+</vector>

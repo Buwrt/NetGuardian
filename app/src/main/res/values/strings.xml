@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ==================== 应用基础信息 ==================== -->
+    <string name="app_name">NetGuardian 流量卫士</string>
+
+    <!-- ==================== 底部导航标签 ==================== -->
+    <string name="nav_overview">总览</string>
+    <string name="nav_apps">应用</string>
+    <string name="nav_control">控制</string>
+    <string name="nav_stats">统计</string>
+    <string name="nav_settings">设置</string>
+
+    <!-- ==================== 总览页文案 ==================== -->
+    <string name="realtime_speed">实时网速</string>
+    <string name="upload">上传</string>
+    <string name="download">下载</string>
+    <string name="today_traffic">今日流量</string>
+    <string name="total_traffic">总流量</string>
+    <string name="used">已用</string>
+    <string name="remaining">剩余</string>
+
+    <!-- ==================== 应用页文案 ==================== -->
+    <string name="app_name_label">应用名称</string>
+    <string name="mobile_traffic">移动流量</string>
+    <string name="wifi_traffic">WiFi流量</string>
+    <string name="total_traffic_label">总流量</string>
+    <string name="background_traffic">后台流量</string>
+    <string name="sort_method">排序方式</string>
+
+    <!-- ==================== 控制页文案 ==================== -->
+    <string name="mobile_data">移动数据</string>
+    <string name="wifi_network">WiFi网络</string>
+    <string name="background_network">后台网络</string>
+    <string name="allow">允许</string>
+    <string name="block">禁止</string>
+    <string name="batch_operation">批量操作</string>
+    <string name="allow_all">全部允许</string>
+    <string name="block_all">全部禁止</string>
+
+    <!-- ==================== 统计页文案 ==================== -->
+    <string name="day">日</string>
+    <string name="week">周</string>
+    <string name="month">月</string>
+    <string name="traffic_statistics">流量统计</string>
+    <string name="history_detail">历史明细</string>
+    <string name="bar_chart">柱状图</string>
+    <string name="line_chart">折线图</string>
+
+    <!-- ==================== 设置页文案 ==================== -->
+    <string name="permission_mode">权限模式</string>
+    <string name="root_mode">Root模式</string>
+    <string name="shizuku_mode">Shizuku模式</string>
+    <string name="no_permission">无权限</string>
+    <string name="detect_root">检测Root</string>
+    <string name="enable_shizuku">启用Shizuku</string>
+    <string name="anti_sneak">防偷跑</string>
+    <string name="auto_disconnect">自动断网</string>
+    <string name="notification">通知</string>
+    <string name="traffic_limit_alert">流量限额提醒</string>
+    <string name="background_monitor">后台监控</string>
+    <string name="start_monitor">启动监控</string>
+    <string name="stop_monitor">停止监控</string>
+    <string name="monitoring">监控中</string>
+    <string name="stopped">已停止</string>
+
+    <!-- ==================== 通用文案 ==================== -->
+    <string name="confirm">确定</string>
+    <string name="cancel">取消</string>
+    <string name="apply">应用</string>
+    <string name="save">保存</string>
+    <string name="delete">删除</string>
+    <string name="unit_mb">MB</string>
+    <string name="unit_gb">GB</string>
+    <string name="unit_kb">KB</string>
+    <string name="unit_bps">B/s</string>
+    <string name="unit_kbps">KB/s</string>
+    <string name="unit_mbps">MB/s</string>
+    <string name="no_network">无网络</string>
+    <string name="detecting">正在检测</string>
+    <string name="permission_denied">权限不足</string>
+    <string name="operation_success">操作成功</string>
+    <string name="operation_failed">操作失败</string>
+
+    <!-- ==================== Root 专属文案 ==================== -->
+    <string name="high_precision_mode">高精度模式</string>
+    <string name="process_level_control">进程级管控</string>
+    <string name="iptables_rules">iptables规则</string>
+    <string name="underlying_intercept">底层拦截</string>
+</resources>

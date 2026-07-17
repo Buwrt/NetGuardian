@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 流量图标: 上传下载双箭头 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 左侧上传箭头 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M8,7L4,11L8,15L8,12L11,12L11,10L8,10Z" />
+    <!-- 右侧下载箭头 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M16,17L20,13L16,9L16,12L13,12L13,14L16,14Z" />
+</vector>

@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ==================== Material3 主色调 ==================== -->
+    <!-- 主色 - 蓝色系 -->
+    <color name="primary">#1B6EF3</color>
+    <color name="on_primary">#FFFFFF</color>
+    <color name="primary_container">#D8E2FF</color>
+    <color name="on_primary_container">#001A41</color>
+
+    <!-- 次要色 - 青色系 -->
+    <color name="secondary">#006B5E</color>
+    <color name="on_secondary">#FFFFFF</color>
+    <color name="secondary_container">#7CF8E0</color>
+    <color name="on_secondary_container">#00201B</color>
+
+    <!-- 第三色 - 紫色系 -->
+    <color name="tertiary">#6D4FAF</color>
+    <color name="on_tertiary">#FFFFFF</color>
+    <color name="tertiary_container">#E8DDFF</color>
+    <color name="on_tertiary_container">#25005A</color>
+
+    <!-- 错误色 -->
+    <color name="error">#BA1A1A</color>
+    <color name="on_error">#FFFFFF</color>
+    <color name="error_container">#FFDAD6</color>
+    <color name="on_error_container">#410002</color>
+
+    <!-- ==================== 背景与表面色 ==================== -->
+    <color name="background">#FBFCFF</color>
+    <color name="on_background">#1A1C1E</color>
+    <color name="surface">#FBFCFF</color>
+    <color name="on_surface">#1A1C1E</color>
+    <color name="surface_variant">#DFE2EB</color>
+    <color name="on_surface_variant">#43474E</color>
+    <color name="surface_container">#EEF0F4</color>
+    <color name="surface_container_low">#F4F6F9</color>
+    <color name="surface_container_high">#E8EAF0</color>
+    <color name="surface_container_highest">#E2E4E9</color>
+    <color name="surface_bright">#FBFCFF</color>
+    <color name="surface_dim">#D9DBDF</color>
+    <color name="surface_inverse">#2F3033</color>
+    <color name="on_surface_inverse">#F1F0F4</color>
+
+    <!-- ==================== 轮廓与边框 ==================== -->
+    <color name="outline">#74777F</color>
+    <color name="outline_variant">#C4C6D0</color>
+
+    <!-- ==================== 反色与固定色 ==================== -->
+    <color name="inverse_primary">#ACC7FF</color>
+    <color name="inverse_surface">#2F3033</color>
+    <color name="inverse_on_surface">#F1F0F4</color>
+
+    <!-- 固定色 - 不随主题变化 -->
+    <color name="primary_fixed">#D8E2FF</color>
+    <color name="on_primary_fixed">#001A41</color>
+    <color name="primary_fixed_dim">#ACC7FF</color>
+    <color name="on_primary_fixed_variant">#004999</color>
+    <color name="secondary_fixed">#7CF8E0</color>
+    <color name="on_secondary_fixed">#00201B</color>
+    <color name="secondary_fixed_dim">#5CD8C4</color>
+    <color name="on_secondary_fixed_variant">#005046</color>
+    <color name="tertiary_fixed">#E8DDFF</color>
+    <color name="on_tertiary_fixed">#25005A</color>
+    <color name="tertiary_fixed_dim">#CCBDF9</color>
+    <color name="on_tertiary_fixed_variant">#54378F</color>
+
+    <!-- ==================== 滚动条与状态 ==================== -->
+    <color name="scrim">#000000</color>
+    <color name="shadow">#000000</color>
+
+    <!-- ==================== 流量相关专用色 ==================== -->
+    <!-- 绿色 - 安全/正常 -->
+    <color name="traffic_green">#00C853</color>
+    <!-- 红色 - 超限/危险 -->
+    <color name="traffic_red">#FF1744</color>
+    <!-- 黄色 - 警告/注意 -->
+    <color name="traffic_yellow">#FFD600</color>
+    <!-- 蓝色 - 数据传输 -->
+    <color name="traffic_blue">#2979FF</color>
+    <!-- 橙色 - 接近限额 -->
+    <color name="traffic_orange">#FF9100</color>
+</resources>

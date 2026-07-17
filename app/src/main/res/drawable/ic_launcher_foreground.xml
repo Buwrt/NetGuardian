@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 启动器图标前景: N字母与盾牌组合 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 盾牌外轮廓 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.95"
+        android:pathData="M54,12 L22,28 L22,52 C22,70.8 36.2,87.6 54,93 C71.8,87.6 86,70.8 86,52 L86,28 Z" />
+    <!-- 盾牌内填充 - 半透明 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.15"
+        android:pathData="M54,20 L30,33 L30,52 C30,66.4 40.6,80 54,84 C67.4,80 78,66.4 78,52 L78,33 Z" />
+    <!-- N字母 -->
+    <path
+        android:fillColor="#1B6EF3"
+        android:pathData="M40,38 L40,68 L46,68 L46,50 L62,68 L68,68 L68,38 L62,38 L62,56 L46,38 Z" />
+</vector>

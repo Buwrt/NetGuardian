@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 移动数据图标: 信号塔与波纹 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 塔身 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M11,14L11,22L13,22L13,14Z" />
+    <!-- 塔顶三角 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M12,2L7,10L17,10Z" />
+    <!-- 塔底底座 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M8,22L16,22L16,20L8,20Z" />
+    <!-- 左侧信号弧 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M6.34,13.66C5.56,12.88 5,11.98 5,11C5,10.02 5.56,9.12 6.34,8.34L4.93,6.93C3.73,8.13 3,9.51 3,11C3,12.49 3.73,13.87 4.93,15.07Z" />
+    <!-- 右侧信号弧 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M17.66,13.66C18.44,12.88 19,11.98 19,11C19,10.02 18.44,9.12 17.66,8.34L19.07,6.93C20.27,8.13 21,9.51 21,11C21,12.49 20.27,13.87 19.07,15.07Z" />
+</vector>

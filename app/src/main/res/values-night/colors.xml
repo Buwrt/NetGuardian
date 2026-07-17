@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ==================== Material3 深色主题色彩覆盖 ==================== -->
+
+    <!-- 主色 - 深色模式下提高亮度 -->
+    <color name="primary">#ACC7FF</color>
+    <color name="on_primary">#003062</color>
+    <color name="primary_container">#004999</color>
+    <color name="on_primary_container">#D8E2FF</color>
+
+    <!-- 次要色 - 深色模式下降低饱和度 -->
+    <color name="secondary">#5CD8C4</color>
+    <color name="on_secondary">#003730</color>
+    <color name="secondary_container">#005046</color>
+    <color name="on_secondary_container">#7CF8E0</color>
+
+    <!-- 第三色 - 深色模式下调整 -->
+    <color name="tertiary">#CCBDF9</color>
+    <color name="on_tertiary">#3B0080</color>
+    <color name="tertiary_container">#54378F</color>
+    <color name="on_tertiary_container">#E8DDFF</color>
+
+    <!-- 错误色 - 深色模式 -->
+    <color name="error">#FFB4AB</color>
+    <color name="on_error">#690005</color>
+    <color name="error_container">#93000A</color>
+    <color name="on_error_container">#FFDAD6</color>
+
+    <!-- ==================== 背景与表面色 - 深色系 ==================== -->
+    <color name="background">#1A1C1E</color>
+    <color name="on_background">#E2E4E9</color>
+    <color name="surface">#1A1C1E</color>
+    <color name="on_surface">#E2E4E9</color>
+    <color name="surface_variant">#43474E</color>
+    <color name="on_surface_variant">#C4C6D0</color>
+    <color name="surface_container">#211F26</color>
+    <color name="surface_container_low">#1A1C1E</color>
+    <color name="surface_container_high">#2B2930</color>
+    <color name="surface_container_highest">#36343B</color>
+    <color name="surface_bright">#37353C</color>
+    <color name="surface_dim">#1A1C1E</color>
+    <color name="surface_inverse">#E2E4E9</color>
+    <color name="on_surface_inverse">#2F3033</color>
+
+    <!-- ==================== 轮廓与边框 ==================== -->
+    <color name="outline">#8E9099</color>
+    <color name="outline_variant">#43474E</color>
+
+    <!-- ==================== 反色与固定色 ==================== -->
+    <color name="inverse_primary">#1B6EF3</color>
+    <color name="inverse_surface">#E2E4E9</color>
+    <color name="inverse_on_surface">#2F3033</color>
+
+    <!-- 固定色 - 深色模式不变 -->
+    <color name="primary_fixed">#D8E2FF</color>
+    <color name="on_primary_fixed">#001A41</color>
+    <color name="primary_fixed_dim">#ACC7FF</color>
+    <color name="on_primary_fixed_variant">#004999</color>
+    <color name="secondary_fixed">#7CF8E0</color>
+    <color name="on_secondary_fixed">#00201B</color>
+    <color name="secondary_fixed_dim">#5CD8C4</color>
+    <color name="on_secondary_fixed_variant">#005046</color>
+    <color name="tertiary_fixed">#E8DDFF</color>
+    <color name="on_tertiary_fixed">#25005A</color>
+    <color name="tertiary_fixed_dim">#CCBDF9</color>
+    <color name="on_tertiary_fixed_variant">#54378F</color>
+
+    <!-- ==================== 滚动条与状态 ==================== -->
+    <color name="scrim">#000000</color>
+    <color name="shadow">#000000</color>
+
+    <!-- ==================== 流量专用色 - 深色模式下适当降低亮度 ==================== -->
+    <color name="traffic_green">#00E676</color>
+    <color name="traffic_red">#FF5252</color>
+    <color name="traffic_yellow">#FFFF00</color>
+    <color name="traffic_blue">#448AFF</color>
+    <color name="traffic_orange">#FFAB40</color>
+</resources>

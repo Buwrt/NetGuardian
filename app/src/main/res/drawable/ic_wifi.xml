@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- WiFi图标: 信号弧线 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 最外层弧线 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M12,18C13.1,18 14,17.1 14,16C14,14.9 13.1,14 12,14C10.9,14 10,14.9 10,16C10,17.1 10.9,18 12,18Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M12,10.5C9.18,10.5 6.64,11.76 4.93,13.82L6.5,15.09C7.85,13.43 9.79,12.5 12,12.5C14.21,12.5 16.15,13.43 17.5,15.09L19.07,13.82C17.36,11.76 14.82,10.5 12,10.5Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M12,6.5C7.85,6.5 4.1,8.2 1.46,10.98L3.04,12.26C5.27,9.92 8.46,8.5 12,8.5C15.54,8.5 18.73,9.92 20.96,12.26L22.54,10.98C19.9,8.2 16.15,6.5 12,6.5Z" />
+</vector>
