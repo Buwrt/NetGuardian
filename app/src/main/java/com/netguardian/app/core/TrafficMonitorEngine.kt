@@ -467,8 +467,8 @@ class TrafficMonitorEngine(private val context: Context) {
 
     /**
      * 获取已安装应用列表
-     * 使用 PackageManager.MATCH_ALL (0x00020000) 获取所有已安装应用
-     * 通过 Intent.ACTION_MAIN + Intent.CATEGORY_LAUNCHER 过滤出用户可见的启动器应用
+     * 优先通过 LAUNCHER intent 获取所有可启动的应用（最可靠，兼容OEM ROM限制）
+     * 若 LAUNCHER intent 方式未找到任何应用，则使用 getInstalledApplications 备用方式
      *
      * @param context 上下文
      * @param includeSystemApps 是否包含系统应用，默认false
@@ -476,71 +476,97 @@ class TrafficMonitorEngine(private val context: Context) {
      */
     fun getInstalledApps(context: Context, includeSystemApps: Boolean = false): List<AppInfo> {
         val pm = context.packageManager
-
-        // 使用 PackageManager.MATCH_ALL (0x00020000) 代替已废弃的标志
-        val flags = PackageManager.MATCH_ALL // 0x00020000
-
-        @Suppress("DEPRECATION")
-        val packages = pm.getInstalledPackages(flags)
         val appList = mutableListOf<AppInfo>()
 
-        // 构建 LAUNCHER 意图，用于过滤用户可见应用
-        val launcherIntent = Intent(Intent.ACTION_MAIN, null).apply {
-            addCategory(Intent.CATEGORY_LAUNCHER)
-        }
-        val launchablePackages = pm.queryIntentActivities(launcherIntent, PackageManager.MATCH_ALL)
-            .map { it.activityInfo.packageName }
-            .toSet()
-
-        for (packageInfo in packages) {
-            try {
-                val appInfo = packageInfo.applicationInfo
-
-                // 过滤系统应用（可选）
-                if (!includeSystemApps) {
-                    // 只保留有 LAUNCHER 的用户可见应用
-                    if (packageInfo.packageName !in launchablePackages) {
-                        continue
-                    }
-                    if ((appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0) {
-                        continue
-                    }
-                }
-
-                // 跳过自身
-                if (packageInfo.packageName == context.packageName) {
-                    continue
-                }
-
-                // 加载应用名称
-                val appName = appInfo.loadLabel(pm).toString()
-                if (appName.isBlank()) continue
-
-                // 加载应用图标
-                val icon = try {
-                    appInfo.loadIcon(pm)
-                } catch (e: Exception) {
-                    Log.d(TAG, "加载 ${packageInfo.packageName} 图标失败: ${e.message}")
-                    pm.getDefaultActivityIcon()
-                }
-
-                appList.add(
-                    AppInfo(
-                        packageName = packageInfo.packageName,
-                        appName = appName,
-                        uid = appInfo.uid,
-                        icon = icon,
-                        isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0,
-                        versionName = packageInfo.versionName ?: "未知",
-                        targetSdk = packageInfo.applicationInfo.targetSdkVersion
-                    )
-                )
-            } catch (e: Exception) {
-                // 部分应用可能无法加载信息，跳过
-                Log.d(TAG, "获取应用 ${packageInfo.packageName} 信息失败: ${e.message}")
+        try {
+            // 方式1：通过LAUNCHER intent获取所有可启动的应用（最可靠）
+            val launcherIntent = Intent(Intent.ACTION_MAIN, null).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
             }
+            val resolveInfos = pm.queryIntentActivities(launcherIntent, 0)
+
+            for (resolveInfo in resolveInfos) {
+                try {
+                    val packageName = resolveInfo.activityInfo.packageName
+                    if (packageName == context.packageName) continue // 跳过自身
+
+                    val appInfo = pm.getApplicationInfo(packageName, 0)
+                    val appName = appInfo.loadLabel(pm).toString()
+                    if (appName.isBlank()) continue
+
+                    val icon = try {
+                        appInfo.loadIcon(pm)
+                    } catch (e: Exception) {
+                        pm.getDefaultActivityIcon()
+                    }
+
+                    val packageInfo = try {
+                        @Suppress("DEPRECATION")
+                        pm.getPackageInfo(packageName, 0)
+                    } catch (e: Exception) {
+                        null
+                    }
+
+                    appList.add(
+                        AppInfo(
+                            packageName = packageName,
+                            appName = appName,
+                            uid = appInfo.uid,
+                            icon = icon,
+                            isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0,
+                            versionName = packageInfo?.versionName ?: "未知",
+                            targetSdk = appInfo.targetSdkVersion
+                        )
+                    )
+                } catch (e: Exception) {
+                    Log.d(TAG, "获取应用 ${resolveInfo.activityInfo.packageName} 信息失败: ${e.message}")
+                }
+            }
+
+            // 如果LAUNCHER intent方式没有找到任何应用，使用备用方式
+            if (appList.isEmpty()) {
+                Log.w(TAG, "LAUNCHER intent 未找到应用，使用 getInstalledApplications 备用方式")
+                val applications = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+                for (appInfo in applications) {
+                    try {
+                        if (appInfo.packageName == context.packageName) continue
+                        if (!includeSystemApps && (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0) continue
+
+                        val appName = appInfo.loadLabel(pm).toString()
+                        if (appName.isBlank()) continue
+
+                        val icon = try {
+                            appInfo.loadIcon(pm)
+                        } catch (e: Exception) {
+                            pm.getDefaultActivityIcon()
+                        }
+
+                        appList.add(
+                            AppInfo(
+                                packageName = appInfo.packageName,
+                                appName = appName,
+                                uid = appInfo.uid,
+                                icon = icon,
+                                isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0,
+                                versionName = try {
+                                    @Suppress("DEPRECATION")
+                                    pm.getPackageInfo(appInfo.packageName, 0).versionName ?: "未知"
+                                } catch (e: Exception) {
+                                    "未知"
+                                },
+                                targetSdk = appInfo.targetSdkVersion
+                            )
+                        )
+                    } catch (e: Exception) {
+                        Log.d(TAG, "备用方式获取应用 ${appInfo.packageName} 失败: ${e.message}")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "获取已安装应用列表失败: ${e.message}")
         }
 
+        Log.d(TAG, "检测到 ${appList.size} 个应用")
         return appList.sortedBy { it.appName.lowercase() }
     }
 

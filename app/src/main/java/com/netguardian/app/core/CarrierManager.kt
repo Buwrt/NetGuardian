@@ -76,8 +76,15 @@ class CarrierManager(private val context: Context) {
         val tm = telephonyManager ?: return null
 
         return try {
-            val operator = tm.simOperator ?: ""
-            val carrierName = tm.simOperatorName ?: "未知运营商"
+            // 检查SIM卡是否就绪
+            if (tm.simState != TelephonyManager.SIM_STATE_READY) {
+                Log.d(TAG, "SIM卡未就绪，状态: ${tm.simState}")
+                return null
+            }
+
+            val operator = tm.simOperator?.trim() ?: ""
+            val rawName = tm.simOperatorName?.trim() ?: ""
+            val carrierName = if (rawName.isNotEmpty()) rawName else "未知运营商"
             val networkType = getNetworkTypeName(tm.dataNetworkType)
             val subscriptionId = getDefaultSubscriptionId()
 
@@ -85,18 +92,16 @@ class CarrierManager(private val context: Context) {
                 carrierName = carrierName,
                 simOperator = operator,
                 networkType = networkType,
-                signalStrength = -1, // 信号强度需要PhoneStateListener实时获取
+                signalStrength = -1,
                 subscriptionId = subscriptionId,
                 isDefault = true
             )
 
-            // 更新StateFlow
             _carrierInfo.value = info
-
-            Log.d(TAG, "运营商检测: $carrierName ($operator), 网络: $networkType")
+            Log.d(TAG, "运营商: $carrierName (SIM: $operator), 网络: $networkType")
             info
         } catch (e: SecurityException) {
-            Log.w(TAG, "无READ_PHONE_STATE权限，无法检测运营商: ${e.message}")
+            Log.w(TAG, "无READ_PHONE_STATE权限: ${e.message}")
             null
         } catch (e: Exception) {
             Log.d(TAG, "检测运营商失败: ${e.message}")
@@ -149,20 +154,35 @@ class CarrierManager(private val context: Context) {
      * @return 标准运营商名称："中国移动" / "中国联通" / "中国电信" / 原始名称 / "未知运营商"
      */
     fun getCarrierDisplayName(): String {
-        val name = telephonyManager?.simOperatorName ?: return "未知运营商"
+        val name = telephonyManager?.simOperatorName?.trim() ?: return "未知运营商"
+        if (name.isEmpty()) return "未知运营商"
+        val mccMnc = telephonyManager?.simOperator?.trim() ?: ""
 
         return when {
+            // 中文匹配
             name.contains("移动") -> "中国移动"
             name.contains("联通") -> "中国联通"
             name.contains("电信") -> "中国电信"
             name.contains("广电") -> "中国广电"
+            // 英文缩写匹配
+            name.equals("CMCC", ignoreCase = true) ||
+                name.equals("China Mobile", ignoreCase = true) ||
+                name.equals("中国移动", ignoreCase = true) -> "中国移动"
+            name.equals("CUCC", ignoreCase = true) ||
+                name.equals("China Unicom", ignoreCase = true) ||
+                name.equals("中国联通", ignoreCase = true) -> "中国联通"
+            name.equals("CTCC", ignoreCase = true) ||
+                name.equals("China Telecom", ignoreCase = true) ||
+                name.contains("电信", ignoreCase = true) -> "中国电信"
+            name.equals("CBN", ignoreCase = true) ||
+                name.contains("广电", ignoreCase = true) -> "中国广电"
             // 通过MCC+MNC识别
-            else -> when (telephonyManager?.simOperator) {
+            else -> when (mccMnc) {
                 "46000", "46002", "46004", "46007", "46008" -> "中国移动"
                 "46001", "46006", "46009" -> "中国联通"
                 "46003", "46005", "46011" -> "中国电信"
                 "46015" -> "中国广电"
-                else -> name
+                else -> name.ifEmpty { "未知运营商" }
             }
         }
     }
