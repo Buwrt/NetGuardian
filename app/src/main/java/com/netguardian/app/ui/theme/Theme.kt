@@ -145,29 +145,29 @@ private val DarkColorScheme = darkColorScheme(
  * NetGuardian 组件圆角定义
  */
 object NetGuardianShapes {
-    /** 卡片圆角 */
-    val CardShape = CardDefaults.shape // Material3 默认 12dp
+    /** 卡片圆角 - 12dp */
+    val CardShape = RoundedCornerShape(12.dp)
 
     /** 大卡片圆角 - 16dp */
-    val CardLarge = CardDefaults.shape
+    val CardLarge = RoundedCornerShape(16.dp)
 
     /** 小卡片圆角 - 8dp */
-    val CardSmall = CardDefaults.shape
+    val CardSmall = RoundedCornerShape(8.dp)
 
     /** 按钮圆角 */
-    val ButtonShape = ButtonDefaults.shape
+    val ButtonShape = RoundedCornerShape(20.dp)
 
     /** FAB 圆角 */
-    val FabShape = FloatingActionButtonDefaults.shape
+    val FabShape = RoundedCornerShape(16.dp)
 
     /** 对话框圆角 - 28dp */
-    val DialogShape = ShapeDefaults.ExtraLarge
+    val DialogShape = RoundedCornerShape(28.dp)
 
     /** 底部面板圆角 - 28dp */
-    val BottomSheetShape = ShapeDefaults.ExtraLarge
+    val BottomSheetShape = RoundedCornerShape(28.dp)
 
     /** 芯片/标签圆角 */
-    val ChipShape = ShapeDefaults.Medium // 8dp
+    val ChipShape = RoundedCornerShape(8.dp)
 }
 
 // ==================== 主题入口 ====================

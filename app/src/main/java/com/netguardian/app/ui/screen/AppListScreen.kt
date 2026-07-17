@@ -9,6 +9,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,7 +24,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.animateitem
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -450,16 +450,11 @@ private fun AppTrafficList(
             items = apps,
             key = { it.packageName }
         ) { app ->
-            // animateItem 入场动画
             ElevatedCard(
                 onClick = { onAppClick(app.packageName) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .animateItem(
-                        fadeInSpec = tween(300, easing = FastOutSlowInEasing),
-                        fadeOutSpec = tween(200),
-                        placementSpec = tween(300, easing = FastOutSlowInEasing)
-                    ),
+                    .animateContentSize(),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.elevatedCardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceContainerLow
