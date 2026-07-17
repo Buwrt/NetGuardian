@@ -68,7 +68,7 @@ fun SettingsScreen(
     }
 
     // ==================== 运营商信息 ====================
-    val carrierInfo = remember {
+    val carrierInfo = remember(context) {
         getCarrierInfo(context)
     }
 
@@ -184,9 +184,9 @@ fun SettingsScreen(
                     }
                     try {
                         (context as? android.app.Activity)?.startActivityForResult(intent, 1001)
-                        snackbarHostState.showSnackbar("请选择要恢复的文件")
+                        scope.launch { snackbarHostState.showSnackbar("请选择要恢复的文件") }
                     } catch (e: Exception) {
-                        snackbarHostState.showSnackbar("无法打开文件选择器")
+                        scope.launch { snackbarHostState.showSnackbar("无法打开文件选择器") }
                     }
                 }) {
                     Text("选择文件")
@@ -958,55 +958,52 @@ private data class CarrierInfo(
  * 获取运营商信息
  */
 @SuppressLint("HardwareIds")
-@Composable
 private fun getCarrierInfo(context: Context): CarrierInfo? {
-    return remember {
-        try {
-            val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
-            if (tm != null && tm.simState == TelephonyManager.SIM_STATE_READY) {
-                val operator = tm.simOperator ?: ""
-                val carrierName = when {
-                    operator.startsWith("46000") || operator.startsWith("46002") ||
-                            operator.startsWith("46004") || operator.startsWith("46007") -> "中国移动"
-                    operator.startsWith("46001") || operator.startsWith("46006") ||
-                            operator.startsWith("46009") -> "中国联通"
-                    operator.startsWith("46003") || operator.startsWith("46005") ||
-                            operator.startsWith("46011") -> "中国电信"
-                    else -> "未知运营商"
-                }
-                val networkType = when (tm.networkType) {
-                    TelephonyManager.NETWORK_TYPE_GPRS,
-                    TelephonyManager.NETWORK_TYPE_EDGE,
-                    TelephonyManager.NETWORK_TYPE_CDMA,
-                    TelephonyManager.NETWORK_TYPE_1xRTT,
-                    TelephonyManager.NETWORK_TYPE_IDEN -> "2G"
-                    TelephonyManager.NETWORK_TYPE_UMTS,
-                    TelephonyManager.NETWORK_TYPE_EVDO_0,
-                    TelephonyManager.NETWORK_TYPE_EVDO_A,
-                    TelephonyManager.NETWORK_TYPE_HSDPA,
-                    TelephonyManager.NETWORK_TYPE_HSUPA,
-                    TelephonyManager.NETWORK_TYPE_HSPA,
-                    TelephonyManager.NETWORK_TYPE_EVDO_B,
-                    TelephonyManager.NETWORK_TYPE_EHRPD,
-                    TelephonyManager.NETWORK_TYPE_HSPAP,
-                    TelephonyManager.NETWORK_TYPE_TD_SCDMA -> "3G"
-                    TelephonyManager.NETWORK_TYPE_LTE,
-                    TelephonyManager.NETWORK_TYPE_IWLAN -> "4G"
-                    TelephonyManager.NETWORK_TYPE_NR -> "5G"
-                    else -> ""
-                }
-                val carrierColor = when {
-                    carrierName == "中国移动" -> CarrierCMCC
-                    carrierName == "中国联通" -> CarrierCUCC
-                    carrierName == "中国电信" -> CarrierCTCC
-                    else -> StatusNoneGray
-                }
-                CarrierInfo(carrierName, networkType, carrierColor)
-            } else {
-                null
+    return try {
+        val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+        if (tm != null && tm.simState == TelephonyManager.SIM_STATE_READY) {
+            val operator = tm.simOperator ?: ""
+            val carrierName = when {
+                operator.startsWith("46000") || operator.startsWith("46002") ||
+                        operator.startsWith("46004") || operator.startsWith("46007") -> "中国移动"
+                operator.startsWith("46001") || operator.startsWith("46006") ||
+                        operator.startsWith("46009") -> "中国联通"
+                operator.startsWith("46003") || operator.startsWith("46005") ||
+                        operator.startsWith("46011") -> "中国电信"
+                else -> "未知运营商"
             }
-        } catch (e: Exception) {
+            val networkType = when (tm.networkType) {
+                TelephonyManager.NETWORK_TYPE_GPRS,
+                TelephonyManager.NETWORK_TYPE_EDGE,
+                TelephonyManager.NETWORK_TYPE_CDMA,
+                TelephonyManager.NETWORK_TYPE_1xRTT,
+                TelephonyManager.NETWORK_TYPE_IDEN -> "2G"
+                TelephonyManager.NETWORK_TYPE_UMTS,
+                TelephonyManager.NETWORK_TYPE_EVDO_0,
+                TelephonyManager.NETWORK_TYPE_EVDO_A,
+                TelephonyManager.NETWORK_TYPE_HSDPA,
+                TelephonyManager.NETWORK_TYPE_HSUPA,
+                TelephonyManager.NETWORK_TYPE_HSPA,
+                TelephonyManager.NETWORK_TYPE_EVDO_B,
+                TelephonyManager.NETWORK_TYPE_EHRPD,
+                TelephonyManager.NETWORK_TYPE_HSPAP,
+                TelephonyManager.NETWORK_TYPE_TD_SCDMA -> "3G"
+                TelephonyManager.NETWORK_TYPE_LTE,
+                TelephonyManager.NETWORK_TYPE_IWLAN -> "4G"
+                TelephonyManager.NETWORK_TYPE_NR -> "5G"
+                else -> ""
+            }
+            val carrierColor = when {
+                carrierName == "中国移动" -> CarrierCMCC
+                carrierName == "中国联通" -> CarrierCUCC
+                carrierName == "中国电信" -> CarrierCTCC
+                else -> StatusNoneGray
+            }
+            CarrierInfo(carrierName, networkType, carrierColor)
+        } else {
             null
         }
+    } catch (e: Exception) {
+        null
     }
 }

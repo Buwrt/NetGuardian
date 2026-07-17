@@ -40,6 +40,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -83,7 +84,9 @@ import com.netguardian.app.ui.theme.CarrierCTCC
 import com.netguardian.app.ui.theme.CarrierCUCC
 import com.netguardian.app.ui.theme.MonitorRunning
 import com.netguardian.app.ui.theme.MonitorStopped
+import com.netguardian.app.ui.theme.StatValueTextStyle
 import com.netguardian.app.ui.theme.StatusNoneGray
+import com.netguardian.app.ui.theme.TrafficValueTextStyle
 import com.netguardian.app.ui.theme.StatusRootGreen
 import com.netguardian.app.ui.theme.StatusShizukuBlue
 import com.netguardian.app.ui.theme.TrafficBlue
@@ -655,7 +658,7 @@ private fun TrafficStatCard(
             // 流量数值（精确到 MB，使用 StatValue 样式）
             Text(
                 text = TrafficFormatter.formatMb(traffic),
-                style = TextStyle.StatValue,
+                style = StatValueTextStyle,
                 color = displayColor
             )
 
@@ -841,7 +844,7 @@ private fun TopAppItem(
         // 流量数值（TrafficValue 样式）
         Text(
             text = TrafficFormatter.formatBytes(app.totalBytes),
-            style = TextStyle.TrafficValue,
+            style = TrafficValueTextStyle,
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.widthIn(min = 72.dp)
         )

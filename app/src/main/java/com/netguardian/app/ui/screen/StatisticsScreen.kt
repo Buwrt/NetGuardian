@@ -49,7 +49,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
@@ -61,6 +61,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.netguardian.app.model.TrafficRecord
 import com.netguardian.app.ui.component.BarChart
 import com.netguardian.app.ui.component.BarChartData
+import com.netguardian.app.ui.theme.StatValueTextStyle
 import com.netguardian.app.ui.theme.TrafficBlue
 import com.netguardian.app.ui.theme.TrafficGreen
 import com.netguardian.app.ui.theme.TrafficRed
@@ -307,7 +308,7 @@ private fun TrafficOverviewCard(
             // 大号数字
             Text(
                 text = TrafficFormatter.formatBytes(totalTraffic),
-                style = MaterialTheme.typography.StatValue,
+                style = StatValueTextStyle,
                 color = MaterialTheme.colorScheme.primary,
                 textAlign = TextAlign.Center
             )
@@ -541,46 +542,29 @@ private fun TrafficTrendLineChart(
             val yValue = maxValue * i / 4f
             val yLabel = TrafficFormatter.formatBytes(yValue.toLong())
             val yTextLayout = textMeasurer.measure(yLabel, fontSize = 9.sp)
-            drawIntoCanvas { canvas ->
-                canvas.save()
-                canvas.translate(
+            drawText(
+                textLayoutResult = yTextLayout,
+                topLeft = Offset(
                     4.dp.toPx(),
                     y - yTextLayout.size.height / 2
-                )
-                canvas.nativeCanvas.drawText(
-                    yLabel,
-                    0f,
-                    yTextLayout.size.height.toFloat(),
-                    android.graphics.Paint().apply {
-                        color = textColor.hashCode()
-                        textSize = 9.sp.toPx()
-                        isAntiAlias = true
-                    }
-                )
-                canvas.restore()
-            }
+                ),
+                color = textColor
+            )
         }
 
         // 绘制X轴日期标签
         trendData.forEachIndexed { index, point ->
             val x = chartPaddingLeft + index * xStep
             val label = point.label.takeLast(5) // MM-DD
-            drawIntoCanvas { canvas ->
-                canvas.save()
-                canvas.translate(x - 16.dp.toPx(), size.height - chartPaddingBottom + 4.dp.toPx())
-                canvas.nativeCanvas.drawText(
-                    label,
-                    0f,
-                    9.sp.toPx(),
-                    android.graphics.Paint().apply {
-                        color = textColor.hashCode()
-                        textSize = 9.sp.toPx()
-                        textAlign = android.graphics.Paint.Align.CENTER
-                        isAntiAlias = true
-                    }
-                )
-                canvas.restore()
-            }
+            val xTextLayout = textMeasurer.measure(label, fontSize = 9.sp)
+            drawText(
+                textLayoutResult = xTextLayout,
+                topLeft = Offset(
+                    x - xTextLayout.size.width / 2,
+                    size.height - chartPaddingBottom + 4.dp.toPx()
+                ),
+                color = textColor
+            )
         }
 
         // 计算数据点坐标

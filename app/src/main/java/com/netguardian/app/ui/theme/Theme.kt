@@ -11,6 +11,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Shapes
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 
@@ -88,21 +90,6 @@ private val LightColorScheme = lightColorScheme(
     inversePrimary = InversePrimary,
     inverseSurface = InverseSurface,
     inverseOnSurface = InverseOnSurface,
-    // 滚动条色
-    scrollbar = OutlineVariant,
-    // 输入框焦点色使用主色
-    primaryFixed = Color(0xFFD4E3FF),
-    onPrimaryFixed = Color(0xFF001B3E),
-    primaryFixedDim = Color(0xFF78A8FF),
-    onPrimaryFixedVariant = Color(0xFF004C8C),
-    secondaryFixed = Color(0xFFE0E0F1),
-    onSecondaryFixed = Color(0xFF191A2C),
-    secondaryFixedDim = Color(0xFFC4C3DC),
-    onSecondaryFixedVariant = Color(0xFF464659),
-    tertiaryFixed = Color(0xFFFFD7F6),
-    onTertiaryFixed = Color(0xFF2E152C),
-    tertiaryFixedDim = Color(0xFFE3B7DE),
-    onTertiaryFixedVariant = Color(0xFF5E3C5C),
 )
 
 // ==================== 深色主题配色方案 ====================
@@ -153,21 +140,6 @@ private val DarkColorScheme = darkColorScheme(
     inversePrimary = DarkInversePrimary,
     inverseSurface = DarkInverseSurface,
     inverseOnSurface = DarkInverseOnSurface,
-    // 滚动条色
-    scrollbar = DarkOutlineVariant,
-    // 固定色
-    primaryFixed = Color(0xFFD4E3FF),
-    onPrimaryFixed = Color(0xFF001B3E),
-    primaryFixedDim = Color(0xFF78A8FF),
-    onPrimaryFixedVariant = Color(0xFFA8C8FF),
-    secondaryFixed = Color(0xFFE0E0F1),
-    onSecondaryFixed = Color(0xFF191A2C),
-    secondaryFixedDim = Color(0xFFC4C3DC),
-    onSecondaryFixedVariant = Color(0xFFC4C3DC),
-    tertiaryFixed = Color(0xFFFFD7F6),
-    onTertiaryFixed = Color(0xFF2E152C),
-    tertiaryFixedDim = Color(0xFFE3B7DE),
-    onTertiaryFixedVariant = Color(0xFFE3B7DE),
 )
 
 // ==================== 组件形状系统 ====================
@@ -257,7 +229,13 @@ fun NetGuardianTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography,
-        shapes = ShapeDefaults.Medium,
+        shapes = Shapes(
+            extraSmall = RoundedCornerShape(4.dp),
+            small = RoundedCornerShape(8.dp),
+            medium = RoundedCornerShape(12.dp),
+            large = RoundedCornerShape(16.dp),
+            extraLarge = RoundedCornerShape(24.dp)
+        ),
         content = content
     )
 }

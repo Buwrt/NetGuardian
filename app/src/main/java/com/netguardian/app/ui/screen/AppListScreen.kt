@@ -73,6 +73,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.netguardian.app.model.AppTrafficInfo
 import com.netguardian.app.ui.theme.TrafficBlue
 import com.netguardian.app.ui.theme.TrafficGreen
+import com.netguardian.app.ui.theme.TrafficValueTextStyle
 import com.netguardian.app.ui.theme.cardBackground
 import com.netguardian.app.util.TrafficFormatter
 import com.netguardian.app.viewmodel.AppListViewModel
@@ -590,7 +591,7 @@ private fun AppTrafficCardItem(
                 // 总流量数值（TrafficValue 样式）
                 Text(
                     text = TrafficFormatter.formatBytes(app.totalBytes),
-                    style = TextStyle.TrafficValue,
+                    style = TrafficValueTextStyle,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1
                 )
@@ -919,8 +920,5 @@ private fun FooterInfo(appCount: Int) {
 }
 
 // ==================== 导入补充说明 ====================
-// TextStyle.TrafficValue 扩展属性定义在 Type.kt 中：
-//   val TextStyle.Companion.TrafficValue: TextStyle
-// cardBackground 扩展属性定义在 Theme.kt 中：
-//   val MaterialTheme.colors.cardBackground: Color
+// cardBackground 扩展属性定义在 Theme.kt 中
 // 颜色常量 TrafficGreen, TrafficBlue 定义在 Color.kt 中

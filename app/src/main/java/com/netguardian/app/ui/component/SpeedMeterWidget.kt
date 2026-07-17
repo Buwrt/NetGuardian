@@ -26,6 +26,9 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.netguardian.app.ui.theme.DownloadTeal
+import com.netguardian.app.ui.theme.MeterLabelTextStyle
+import com.netguardian.app.ui.theme.SpeedDisplaySmallStyle
+import com.netguardian.app.ui.theme.SpeedDisplayStyle
 import com.netguardian.app.ui.theme.TrafficCyan
 import com.netguardian.app.ui.theme.TrafficGreen
 import com.netguardian.app.ui.theme.UploadPurple
@@ -202,7 +205,7 @@ fun SpeedMeterWidget(
             // 下载速率 - 大号数字（SpeedDisplay 样式）
             Text(
                 text = TrafficFormatter.formatSpeed(downloadSpeed),
-                style = androidx.compose.ui.text.TextStyle.SpeedDisplay,
+                style = SpeedDisplayStyle,
                 color = onSurface,
                 textAlign = TextAlign.Center
             )
@@ -212,7 +215,7 @@ fun SpeedMeterWidget(
             // "下载" 标签（MeterLabel 样式）
             Text(
                 text = "\u2193 \u4E0B\u8F7D",  // ↓ 下载
-                style = androidx.compose.ui.text.TextStyle.MeterLabel,
+                style = MeterLabelTextStyle,
                 color = onSurfaceVariant,
                 textAlign = TextAlign.Center
             )
@@ -240,7 +243,7 @@ fun SpeedMeterWidget(
             // 上传速率 - 中号数字（SpeedDisplaySmall 样式）
             Text(
                 text = TrafficFormatter.formatSpeed(uploadSpeed),
-                style = androidx.compose.ui.text.TextStyle.SpeedDisplaySmall,
+                style = SpeedDisplaySmallStyle,
                 color = UploadPurple,
                 textAlign = TextAlign.Center
             )
@@ -250,7 +253,7 @@ fun SpeedMeterWidget(
             // "上传" 标签（MeterLabel 样式）
             Text(
                 text = "\u2191 \u4E0A\u4F20",  // ↑ 上传
-                style = androidx.compose.ui.text.TextStyle.MeterLabel,
+                style = MeterLabelTextStyle,
                 color = onSurfaceVariant,
                 textAlign = TextAlign.Center
             )
