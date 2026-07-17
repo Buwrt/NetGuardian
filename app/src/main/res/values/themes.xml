@@ -1,74 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- ==================== Material3 浅色主题 ==================== -->
-    <style name="Theme.NetGuardian" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- 主色调 -->
-        <item name="colorPrimary">@color/primary</item>
-        <item name="colorOnPrimary">@color/on_primary</item>
-        <item name="colorPrimaryContainer">@color/primary_container</item>
-        <item name="colorOnPrimaryContainer">@color/on_primary_container</item>
-
-        <!-- 次要色 -->
-        <item name="colorSecondary">@color/secondary</item>
-        <item name="colorOnSecondary">@color/on_secondary</item>
-        <item name="colorSecondaryContainer">@color/secondary_container</item>
-        <item name="colorOnSecondaryContainer">@color/on_secondary_container</item>
-
-        <!-- 第三色 -->
-        <item name="colorTertiary">@color/tertiary</item>
-        <item name="colorOnTertiary">@color/on_tertiary</item>
-        <item name="colorTertiaryContainer">@color/tertiary_container</item>
-        <item name="colorOnTertiaryContainer">@color/on_tertiary_container</item>
-
-        <!-- 错误色 -->
-        <item name="colorError">@color/error</item>
-        <item name="colorOnError">@color/on_error</item>
-        <item name="colorErrorContainer">@color/error_container</item>
-        <item name="colorOnErrorContainer">@color/on_error_container</item>
-
-        <!-- 背景与表面 -->
-        <item name="colorBackground">@color/background</item>
-        <item name="colorOnBackground">@color/on_background</item>
-        <item name="colorSurface">@color/surface</item>
-        <item name="colorOnSurface">@color/on_surface</item>
-        <item name="colorSurfaceVariant">@color/surface_variant</item>
-        <item name="colorOnSurfaceVariant">@color/on_surface_variant</item>
-
-        <!-- 轮廓 -->
-        <item name="colorOutline">@color/outline</item>
-        <item name="colorOutlineVariant">@color/outline_variant</item>
-
-        <!-- 反色 -->
-        <item name="colorInversePrimary">@color/inverse_primary</item>
-        <item name="colorInverseSurface">@color/inverse_surface</item>
-        <item name="colorInverseOnSurface">@color/on_surface_inverse</item>
-
-        <!-- 表面容器 -->
-        <item name="colorSurfaceContainer">@color/surface_container</item>
-        <item name="colorSurfaceContainerLow">@color/surface_container_low</item>
-        <item name="colorSurfaceContainerHigh">@color/surface_container_high</item>
-        <item name="colorSurfaceContainerHighest">@color/surface_container_highest</item>
-        <item name="colorSurfaceBright">@color/surface_bright</item>
-        <item name="colorSurfaceDim">@color/surface_dim</item>
-
-        <!-- 滚动条 -->
-        <item name="android:colorScrollBarThumb">@color/outline_variant</item>
-        <item name="android:colorScrollBarTrack">@android:color/transparent</item>
-
-        <!-- 状态栏 -->
+    <!-- ==================== Material3 主题 (Compose为主, XML仅作声明) ==================== -->
+    <style name="Theme.NetGuardian" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- 状态栏透明 -->
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
-    </style>
-
-    <!-- ==================== 启动主题 (用于SplashScreen) ==================== -->
-    <style name="Theme.NetGuardian.Splash" parent="Theme.SplashScreen">
-        <!-- 启动页背景 -->
-        <item name="windowSplashScreenBackground">@color/primary</item>
-        <!-- 启动页图标 -->
-        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
-        <!-- 过渡到主主题 -->
-        <item name="postSplashScreenTheme">@style/Theme.NetGuardian</item>
     </style>
 </resources>
