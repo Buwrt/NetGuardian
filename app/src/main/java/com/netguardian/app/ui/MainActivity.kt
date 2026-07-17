@@ -5,40 +5,48 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.netguardian.app.R
 import com.netguardian.app.ui.navigation.AppNavigation
 import com.netguardian.app.ui.navigation.Routes
 import com.netguardian.app.ui.theme.NetGuardianTheme
+import com.netguardian.app.util.DataStoreHelper
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 /**
- * NetGuardian 主Activity
- * 使用Jetpack Compose构建，采用Material3设计风格
+ * NetGuardian 主 Activity
+ * 使用 Jetpack Compose 构建，采用 Material3 设计风格
  *
  * 主要职责：
- * 1. 设置Material3主题（支持深浅主题切换）
- * 2. 初始化底部导航栏（5个Tab）
- * 3. 使用NavController管理页面导航
- * 4. 请求必要权限（POST_NOTIFICATIONS等）
- * 5. 配置NavHost定义各页面路由
+ * 1. 设置 Material3 主题（支持浅色/深色/跟随系统三种模式）
+ * 2. 初始化底部导航栏（5 个 Tab：总览/应用/控制/统计/设置）
+ * 3. 使用 NavController 管理页面导航
+ * 4. 请求必要权限（POST_NOTIFICATIONS 等）
+ * 5. 配置 NavHost 定义各页面路由
+ * 6. 支持返回键导航
  */
 class MainActivity : ComponentActivity() {
 
     companion object {
         private const val TAG = "MainActivity"
     }
-
-    /** 导航控制器 */
-    private lateinit var navController: androidx.navigation.NavController
 
     /** 权限请求启动器 - 通知权限 */
     private val notificationPermissionLauncher = registerForActivityResult(
@@ -57,35 +65,9 @@ class MainActivity : ComponentActivity() {
         // 请求必要权限
         requestNecessaryPermissions()
 
-        // 设置Compose内容
+        // 设置 Compose 内容
         setContent {
-            // 深色主题状态（从SharedPreferences读取）
-            val prefs = getSharedPreferences(
-                com.netguardian.app.util.Constants.DATASTORE_NAME,
-                MODE_PRIVATE
-            )
-            val isDarkTheme = remember {
-                mutableStateOf(
-                    prefs.getBoolean(com.netguardian.app.util.Constants.KEY_DARK_THEME, false)
-                )
-            }
-
-            // 应用Material3主题
-            NetGuardianTheme(
-                darkTheme = isDarkTheme.value,
-                dynamicColor = true
-            ) {
-                // 主内容，包含底部导航和NavHost
-                MainContent(
-                    isDarkTheme = isDarkTheme.value,
-                    onDarkThemeChanged = { dark ->
-                        isDarkTheme.value = dark
-                        prefs.edit()
-                            .putBoolean(com.netguardian.app.util.Constants.KEY_DARK_THEME, dark)
-                            .apply()
-                    }
-                )
-            }
+            MainContent()
         }
     }
 
@@ -109,87 +91,127 @@ class MainActivity : ComponentActivity() {
 }
 
 /**
- * 主内容Composable
- * 包含底部导航栏和NavHost页面导航
+ * 主内容 Composable
+ * 包含底部导航栏和 NavHost 页面导航
  *
- * @param isDarkTheme 当前是否使用深色主题
- * @param onDarkThemeChanged 主题切换回调
+ * 主题切换逻辑：
+ * - "system"：跟随系统 (isSystemInDarkTheme())
+ * - "light"：强制浅色
+ * - "dark"：强制深色
+ * 主题模式通过 DataStoreHelper 持久化
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MainContent(
-    isDarkTheme: Boolean,
-    onDarkThemeChanged: (Boolean) -> Unit = {}
-) {
+private fun MainContent() {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val navController = rememberNavController()
 
-    // 当前导航路由
+    // ==================== 主题状态管理 ====================
+    var themeMode by remember { mutableStateOf("system") }
+
+    // 从 DataStore 读取主题模式
+    LaunchedEffect(Unit) {
+        DataStoreHelper.getThemeModeFlow(context)
+            .distinctUntilChanged()
+            .collect { mode ->
+                themeMode = mode
+            }
+    }
+
+    // 根据主题模式计算是否深色
+    val isDarkTheme = when (themeMode) {
+        "dark" -> true
+        "light" -> false
+        else -> isSystemInDarkTheme()
+    }
+
+    // ==================== 导航状态 ====================
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
-    // 底部导航项定义
+    // ==================== 底部导航栏显示逻辑 ====================
+    // 控制页不在底部导航显示，且控制页不显示底部导航栏
+    val showBottomBar = currentRoute != null &&
+            !currentRoute.startsWith(Routes.APP_CONTROL_PREFIX)
+
+    // ==================== 返回键处理 ====================
+    // 在非起始页时，返回键执行 popBackStack
+    BackHandler(enabled = navController.previousBackStackEntry != null) {
+        navController.popBackStack()
+    }
+
+    // ==================== 底部导航项定义 ====================
     val bottomNavItems = listOf(
         BottomNavItem(
             route = Routes.DASHBOARD,
             label = "总览",
-            iconResId = R.drawable.ic_speed
+            icon = Icons.Default.Dashboard
         ),
         BottomNavItem(
-            route = Routes.APPS,
+            route = Routes.APP_LIST,
             label = "应用",
-            iconResId = R.drawable.ic_apps
+            icon = Icons.Outlined.Apps
         ),
         BottomNavItem(
             route = Routes.APP_CONTROL_PREFIX,
             label = "控制",
-            iconResId = R.drawable.ic_shield,
+            icon = Icons.Default.Shield,
             enabled = false // 控制页由应用列表进入，不在底部导航直接显示
         ),
         BottomNavItem(
             route = Routes.STATISTICS,
             label = "统计",
-            iconResId = R.drawable.ic_chart
+            icon = Icons.Default.BarChart
         ),
         BottomNavItem(
             route = Routes.SETTINGS,
             label = "设置",
-            iconResId = R.drawable.ic_settings
+            icon = Icons.Default.Settings
         )
     )
 
-    // 判断是否显示底部导航栏（控制页不显示）
-    val showBottomBar = currentRoute != null && !currentRoute.startsWith(Routes.APP_CONTROL_PREFIX)
-
-    Scaffold(
-        bottomBar = {
-            if (showBottomBar) {
-                BottomNavigationBar(
-                    items = bottomNavItems,
-                    currentRoute = currentRoute,
-                    onNavigate = { route ->
-                        // 导航到目标页面，保留每个页面的回退栈
-                        navController.navigate(route) {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
+    // ==================== 应用主题 ====================
+    NetGuardianTheme(
+        darkTheme = isDarkTheme,
+        dynamicColor = true
+    ) {
+        Scaffold(
+            bottomBar = {
+                if (showBottomBar) {
+                    BottomNavigationBar(
+                        items = bottomNavItems,
+                        currentRoute = currentRoute,
+                        onNavigate = { route ->
+                            if (route == Routes.APP_CONTROL_PREFIX) return@BottomNavigationBar
+                            // 导航到目标页面，保留每个页面的回退栈
+                            navController.navigate(route) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
                             }
-                            launchSingleTop = true
-                            restoreState = true
                         }
-                    }
-                )
+                    )
+                }
             }
+        ) { _ ->
+            AppNavigation(
+                navController = navController
+            )
         }
-    ) { innerPadding ->
-        // 导航宿主
-        AppNavigation(
-            navController = navController
-        )
     }
 }
 
 /**
  * 底部导航栏组件
- * Material3 NavigationBar样式，显示5个Tab
+ * Material3 NavigationBar 样式，显示 5 个 Tab
+ *
+ * 特性：
+ * - 选中态使用 primary 色（图标和文字）
+ * - 深色模式下导航栏颜色自动适配（通过 MaterialTheme.colorScheme.surface）
+ * - 选中时底部有 primaryContainer 色指示器
+ * - "控制" Tab 默认禁用（enabled = false），由应用列表页进入
  *
  * @param items 导航项列表
  * @param currentRoute 当前路由
@@ -211,9 +233,7 @@ private fun BottomNavigationBar(
             NavigationBarItem(
                 icon = {
                     Icon(
-                        imageVector = androidx.compose.ui.graphics.vector.ImageVector.vectorResource(
-                            id = item.iconResId
-                        ),
+                        imageVector = item.icon,
                         contentDescription = item.label,
                         tint = if (isSelected) {
                             MaterialTheme.colorScheme.primary
@@ -251,15 +271,13 @@ private fun BottomNavigationBar(
  * 底部导航项数据类
  *
  * @param route 路由路径
- * @param label 显示标签
- * @param iconResId 图标资源ID
- * @param enabled 是否启用
+ * @param label 显示标签（中文）
+ * @param icon Material Icons 图标
+ * @param enabled 是否启用（"控制" Tab 设为 false）
  */
 private data class BottomNavItem(
     val route: String,
     val label: String,
-    val iconResId: Int,
+    val icon: ImageVector,
     val enabled: Boolean = true
 )
-
-

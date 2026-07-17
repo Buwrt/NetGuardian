@@ -1,8 +1,18 @@
 package com.netguardian.app.ui.component
 
-import androidx.compose.animation.core.*
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -16,27 +26,29 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.netguardian.app.ui.theme.TrafficBlue
 import com.netguardian.app.ui.theme.TrafficGreen
 import com.netguardian.app.util.TrafficFormatter
 
 /**
- * 流量条形图组件
- * 使用Canvas绘制水平柱状图，展示各应用流量对比
- * 支持移动网络/WiFi双色柱并排显示，带入场动画
+ * 流量水平柱状图组件
+ * 使用Canvas自绘水平柱状图，展示各应用流量排行
+ * 支持移动网络(绿)/WiFi(蓝)双色柱并排显示，带入场动画
+ * Y轴最大值自适应，圆角柱条，数值标签在柱条右侧
+ * 深色模式颜色在Canvas外部获取
  *
  * @param data 流量图表数据列表
  * @param modifier 布局修饰符
- * @param maxItems 最多显示条目数，默认10
+ * @param maxValue 数据最大值（传入用于比例计算）
  */
 @Composable
-fun TrafficBarChart(
+fun BarChart(
     data: List<BarChartData>,
     modifier: Modifier = Modifier,
-    maxItems: Int = 10
+    maxValue: Long
 ) {
     if (data.isEmpty()) {
-        // 空数据状态
         Box(
             modifier = modifier
                 .fillMaxWidth()
@@ -45,20 +57,23 @@ fun TrafficBarChart(
         ) {
             Text(
                 text = "暂无流量数据",
-                style = MaterialTheme.typography.bodyMedium,
+                fontSize = 14.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         return
     }
 
-    val displayData = data.take(maxItems)
-    // 计算最大值用于比例缩放
-    val maxValue = displayData.maxOf { it.mobileTraffic + it.wifiTraffic }
-    val barHeight = 24.dp
-    val barSpacing = 8.dp
-    val labelWidth = 80.dp
-    val valueWidth = 72.dp
+    // 颜色在Canvas外部获取，确保DrawScope不调用MaterialTheme
+    val mobileBarColor = TrafficGreen
+    val wifiBarColor = TrafficBlue
+    val labelColor = MaterialTheme.colorScheme.onSurface
+    val valueColor = MaterialTheme.colorScheme.onSurfaceVariant
+
+    val itemHeight = 36.dp
+    val itemSpacing = 4.dp
+    val labelWidth = 72.dp
+    val valueWidth = 64.dp
 
     Column(
         modifier = modifier
@@ -73,106 +88,83 @@ fun TrafficBarChart(
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 移动网络图例
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .padding(end = 4.dp)
-            )
-            Canvas(modifier = Modifier.size(8.dp)) {
+            Canvas(modifier = Modifier.size(10.dp)) {
                 drawRoundRect(
-                    color = TrafficBlue,
-                    size = Size(8.dp.toPx(), 8.dp.toPx()),
+                    color = mobileBarColor,
+                    size = Size(10.dp.toPx(), 10.dp.toPx()),
                     cornerRadius = CornerRadius(2.dp.toPx())
                 )
             }
             Spacer(modifier = Modifier.width(4.dp))
             Text(
                 text = "移动",
-                style = MaterialTheme.typography.labelSmall,
+                fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            // WiFi图例
-            Canvas(modifier = Modifier.size(8.dp)) {
+            Spacer(modifier = Modifier.width(12.dp))
+            Canvas(modifier = Modifier.size(10.dp)) {
                 drawRoundRect(
-                    color = TrafficGreen,
-                    size = Size(8.dp.toPx(), 8.dp.toPx()),
+                    color = wifiBarColor,
+                    size = Size(10.dp.toPx(), 10.dp.toPx()),
                     cornerRadius = CornerRadius(2.dp.toPx())
                 )
             }
             Spacer(modifier = Modifier.width(4.dp))
             Text(
                 text = "WiFi",
-                style = MaterialTheme.typography.labelSmall,
+                fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
 
-        // 柱状图条目
-        displayData.forEachIndexed { _, item ->
-            BarChartItem(
+        // 每个数据项
+        data.forEach { item ->
+            BarChartRow(
                 label = item.label,
                 mobileTraffic = item.mobileTraffic,
                 wifiTraffic = item.wifiTraffic,
-                maxValue = maxValue,
-                barHeight = barHeight,
-                barSpacing = barSpacing,
+                maxVal = if (maxValue > 0) maxValue else 1L,
+                itemHeight = itemHeight,
+                itemSpacing = itemSpacing,
                 labelWidth = labelWidth,
-                valueWidth = valueWidth
+                valueWidth = valueWidth,
+                mobileBarColor = mobileBarColor,
+                wifiBarColor = wifiBarColor,
+                labelColor = labelColor,
+                valueColor = valueColor
             )
         }
     }
 }
 
 /**
- * 单个柱状图条目
- * 使用Canvas绘制带动画的水平双柱
- *
- * @param label 应用名称
- * @param mobileTraffic 移动网络流量（字节）
- * @param wifiTraffic WiFi流量（字节）
- * @param maxValue 数据最大值（用于计算比例）
- * @param barHeight 柱高度
- * @param barSpacing 柱间距
- * @param labelWidth 标签宽度
- * @param valueWidth 数值显示宽度
+ * 单行柱状图 - 使用Canvas绘制带动画的水平双柱
  */
 @Composable
-private fun BarChartItem(
+private fun BarChartRow(
     label: String,
     mobileTraffic: Long,
     wifiTraffic: Long,
-    maxValue: Long,
-    barHeight: androidx.compose.ui.unit.Dp,
-    barSpacing: androidx.compose.ui.unit.Dp,
+    maxVal: Long,
+    itemHeight: androidx.compose.ui.unit.Dp,
+    itemSpacing: androidx.compose.ui.unit.Dp,
     labelWidth: androidx.compose.ui.unit.Dp,
-    valueWidth: androidx.compose.ui.unit.Dp
+    valueWidth: androidx.compose.ui.unit.Dp,
+    mobileBarColor: Color,
+    wifiBarColor: Color,
+    labelColor: Color,
+    valueColor: Color
 ) {
-    val safeMax = if (maxValue > 0) maxValue else 1L
-
-    // 动画：移动流量柱从0增长到目标值
-    val mobileAnimProgress by animateFloatAsState(
-        targetValue = (mobileTraffic.toFloat() / safeMax).coerceIn(0f, 1f),
-        animationSpec = tween(
-            durationMillis = 600,
-            delayMillis = 0,
-            easing = FastOutSlowInEasing
-        ),
-        label = "mobileBar"
+    // 动画进度
+    val mobileProgress by animateFloatAsState(
+        targetValue = (mobileTraffic.toFloat() / maxVal).coerceIn(0f, 1f),
+        animationSpec = tween(600, easing = FastOutSlowInEasing),
+        label = "mobile"
     )
-
-    // 动画：WiFi流量柱从0增长到目标值
-    val wifiAnimProgress by animateFloatAsState(
-        targetValue = (wifiTraffic.toFloat() / safeMax).coerceIn(0f, 1f),
-        animationSpec = tween(
-            durationMillis = 600,
-            delayMillis = 100, // WiFi柱稍微延迟，形成错落感
-            easing = FastOutSlowInEasing
-        ),
-        label = "wifiBar"
+    val wifiProgress by animateFloatAsState(
+        targetValue = (wifiTraffic.toFloat() / maxVal).coerceIn(0f, 1f),
+        animationSpec = tween(600, delayMillis = 80, easing = FastOutSlowInEasing),
+        label = "wifi"
     )
 
     val totalTraffic = mobileTraffic + wifiTraffic
@@ -180,15 +172,15 @@ private fun BarChartItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(barHeight + barSpacing)
-            .padding(vertical = 2.dp),
+            .height(itemHeight + itemSpacing)
+            .padding(vertical = 1.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 应用名称
+        // 左侧标签（应用名）
         Text(
             text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface,
+            fontSize = 12.sp,
+            color = labelColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.width(labelWidth)
@@ -196,52 +188,48 @@ private fun BarChartItem(
 
         Spacer(modifier = Modifier.width(8.dp))
 
-        // 柱状图区域
-        Row(
+        // 柱状图区域 - 用Canvas绘制
+        Canvas(
             modifier = Modifier
                 .weight(1f)
-                .height(barHeight),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                .height(itemHeight)
         ) {
-            // 移动网络柱（蓝色）
-            Canvas(
-                modifier = Modifier
-                    .weight(mobileAnimProgress.coerceIn(0.1f, 1f))
-                    .fillMaxHeight()
-            ) {
-                val barWidth = size.width
+            val chartWidth = size.width
+            val barHeight = size.height
+            val barSpacing = 2.dp.toPx()
+            val singleBarHeight = (barHeight - barSpacing) / 2f
+            val cornerRadius = 4.dp.toPx()
+
+            // 移动流量柱（上方，绿色）
+            val mobileBarWidth = chartWidth * mobileProgress
+            if (mobileBarWidth > 1.dp.toPx()) {
                 drawRoundRect(
-                    color = TrafficBlue,
-                    size = Size(barWidth, size.height),
-                    cornerRadius = CornerRadius(4.dp.toPx())
+                    color = mobileBarColor,
+                    size = Size(mobileBarWidth, singleBarHeight),
+                    cornerRadius = CornerRadius(cornerRadius, cornerRadius)
                 )
             }
 
-            // WiFi柱（绿色）
-            if (wifiAnimProgress > 0.001f) {
-                Canvas(
-                    modifier = Modifier
-                        .weight(wifiAnimProgress.coerceIn(0.1f, 1f))
-                        .fillMaxHeight()
-                ) {
-                    val barWidth = size.width
-                    drawRoundRect(
-                        color = TrafficGreen,
-                        size = Size(barWidth, size.height),
-                        cornerRadius = CornerRadius(4.dp.toPx())
-                    )
-                }
+            // WiFi流量柱（下方，蓝色）
+            val wifiBarWidth = chartWidth * wifiProgress
+            if (wifiBarWidth > 1.dp.toPx()) {
+                drawRoundRect(
+                    color = wifiBarColor,
+                    topLeft = Offset(0f, singleBarHeight + barSpacing),
+                    size = Size(wifiBarWidth, singleBarHeight),
+                    cornerRadius = CornerRadius(cornerRadius, cornerRadius)
+                )
             }
         }
 
         Spacer(modifier = Modifier.width(8.dp))
 
-        // 总流量数值
+        // 右侧数值标签
         Text(
             text = TrafficFormatter.formatBytes(totalTraffic),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+            color = valueColor,
             modifier = Modifier.width(valueWidth)
         )
     }
@@ -249,8 +237,9 @@ private fun BarChartItem(
 
 /**
  * 流量条形图数据项
+ * 与 ViewModel 中使用的数据结构保持一致
  *
- * @param label 显示标签（应用名称）
+ * @param label 显示标签（应用名称或日期）
  * @param mobileTraffic 移动网络流量（字节）
  * @param wifiTraffic WiFi流量（字节）
  */
@@ -264,127 +253,11 @@ data class BarChartData(
 }
 
 /**
- * 垂直柱状图 - 用于日/周/月流量趋势展示
- * 显示多天的流量柱，每日包含移动和WiFi双柱
- *
- * @param data 日期流量数据列表
- * @param modifier 布局修饰符
+ * 折线图/柱状图通用数据点
+ * 用于新的图表组件
  */
-@Composable
-fun VerticalBarChart(
-    data: List<BarChartData>,
-    modifier: Modifier = Modifier
-) {
-    if (data.isEmpty()) return
-
-    val maxValue = data.maxOf { it.totalTraffic }.coerceAtLeast(1L)
-    val chartHeight = 200.dp
-
-    Column(
-        modifier = modifier.fillMaxWidth()
-    ) {
-        // 柱状图绘制区域
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(chartHeight)
-        ) {
-            // Y轴参考线
-            val lineColor = MaterialTheme.colorScheme.outlineVariant
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                // 绘制3条水平参考线
-                for (i in 1..3) {
-                    val y = size.height * (1f - i / 4f)
-                    drawLine(
-                        color = lineColor,
-                        start = Offset(0f, y),
-                        end = Offset(size.width, y),
-                        strokeWidth = 1.dp.toPx()
-                    )
-                }
-            }
-
-            // 柱子
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight()
-                    .padding(horizontal = 4.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.Bottom
-            ) {
-                data.forEach { item ->
-                    val mobileRatio = item.mobileTraffic.toFloat() / maxValue
-                    val wifiRatio = item.wifiTraffic.toFloat() / maxValue
-
-                    val mobileHeight by animateFloatAsState(
-                        targetValue = mobileRatio,
-                        animationSpec = tween(500, easing = FastOutSlowInEasing),
-                        label = "vMobileBar"
-                    )
-                    val wifiHeight by animateFloatAsState(
-                        targetValue = wifiRatio,
-                        animationSpec = tween(500, delayMillis = 50, easing = FastOutSlowInEasing),
-                        label = "vWifiBar"
-                    )
-
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Bottom,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        // 叠加的柱子区域
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(0.7f)
-                                .height(chartHeight * 0.85f),
-                            contentAlignment = Alignment.BottomCenter
-                        ) {
-                            // 移动柱（底部）
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .fillMaxHeight(mobileHeight.coerceAtLeast(0.01f))
-                            ) {
-                                Canvas(modifier = Modifier.fillMaxSize()) {
-                                    drawRoundRect(
-                                        color = TrafficBlue,
-                                        size = Size(size.width, size.height),
-                                        cornerRadius = CornerRadius(3.dp.toPx())
-                                    )
-                                }
-                            }
-
-                            // WiFi柱（叠加在移动柱上方）
-                            if (wifiHeight > 0.001f) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .fillMaxHeight(wifiHeight.coerceAtLeast(0.01f))
-                                ) {
-                                    Canvas(modifier = Modifier.fillMaxSize()) {
-                                        drawRoundRect(
-                                            color = TrafficGreen.copy(alpha = 0.8f),
-                                            size = Size(size.width, size.height),
-                                            cornerRadius = CornerRadius(3.dp.toPx())
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        // X轴日期标签
-                        Text(
-                            text = item.label.takeLast(5), // 显示MM-DD
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
+data class ChartData(
+    val label: String,
+    val mobileValue: Float,
+    val wifiValue: Float
+)

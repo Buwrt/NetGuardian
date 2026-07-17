@@ -67,6 +67,21 @@ interface TrafficDao {
     @Query("DELETE FROM traffic_records WHERE date < :date")
     suspend fun deleteOldRecords(date: String): Int
 
+    /**
+     * 清空所有流量记录
+     * 用于数据恢复前清理旧数据
+     */
+    @Query("DELETE FROM traffic_records")
+    suspend fun clearAllRecords()
+
+    /**
+     * 批量插入流量记录
+     * 用于数据恢复场景的批量导入
+     * @param records 流量记录列表
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertRecords(records: List<TrafficRecord>)
+
     // ==================== 流量限制操作 ====================
 
     /**

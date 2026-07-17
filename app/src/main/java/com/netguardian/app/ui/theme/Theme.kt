@@ -6,25 +6,213 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 
 /**
- * NetGuardian 应用主题系统
- * 基于Material3设计规范，支持：
- * - 浅色/深色主题自动切换
- * - Android 12+ 动态颜色（Dynamic Color）支持
- * - 自定义品牌色系
- * - 状态栏/导航栏沉浸式适配
+ * NetGuardian 专业级主题系统
+ * 基于 Material3 设计规范，支持：
+ * - 浅色/深色双主题完整切换
+ * - Android 12+ 动态颜色（Dynamic Color）支持，带自定义 fallback
+ * - Material3 组件样式覆盖（卡片、按钮、开关等）
+ * - 沉浸式状态栏 & 导航栏
  */
 
+// ==================== 主题扩展属性 ====================
+
 /**
- * NetGuardian全局主题入口Composable
+ * 扩展 ColorScheme，提供更丰富的语义化颜色访问
+ */
+val ColorScheme.cardBackground: Color
+    @Composable
+    get() = if (isSystemInDarkTheme()) DarkSurfaceContainerLow else Color.White
+
+val ColorScheme.cardBorder: Color
+    @Composable
+    get() = if (isSystemInDarkTheme()) DarkOutlineVariant else OutlineVariant
+
+val ColorScheme.divider: Color
+    @Composable
+    get() = if (isSystemInDarkTheme()) DarkOutlineVariant else OutlineVariant
+
+// ==================== 浅色主题配色方案 ====================
+
+/**
+ * 浅色主题完整 ColorScheme
+ * 使用 iOS 蓝 #0A84FF 作为主色调，清新现代风格
+ */
+private val LightColorScheme = lightColorScheme(
+    // 主色
+    primary = Primary,
+    onPrimary = OnPrimary,
+    primaryContainer = PrimaryContainer,
+    onPrimaryContainer = OnPrimaryContainer,
+    // 次要色
+    secondary = Secondary,
+    onSecondary = OnSecondary,
+    secondaryContainer = SecondaryContainer,
+    onSecondaryContainer = OnSecondaryContainer,
+    // 第三色
+    tertiary = Tertiary,
+    onTertiary = OnTertiary,
+    tertiaryContainer = TertiaryContainer,
+    onTertiaryContainer = OnTertiaryContainer,
+    // 错误色
+    error = Error,
+    onError = OnError,
+    errorContainer = ErrorContainer,
+    onErrorContainer = OnErrorContainer,
+    // 背景与表面
+    background = Background,
+    onBackground = OnBackground,
+    surface = Surface,
+    onSurface = OnSurface,
+    surfaceDim = SurfaceDim,
+    surfaceBright = SurfaceBright,
+    surfaceContainerLowest = SurfaceContainerLowest,
+    surfaceContainerLow = SurfaceContainerLow,
+    surfaceContainer = SurfaceContainer,
+    surfaceContainerHigh = SurfaceContainerHigh,
+    surfaceContainerHighest = SurfaceContainerHighest,
+    surfaceVariant = SurfaceVariant,
+    onSurfaceVariant = OnSurfaceVariant,
+    // 轮廓色
+    outline = Outline,
+    outlineVariant = OutlineVariant,
+    // 反向色
+    inversePrimary = InversePrimary,
+    inverseSurface = InverseSurface,
+    inverseOnSurface = InverseOnSurface,
+    // 滚动条色
+    scrollbar = OutlineVariant,
+    // 输入框焦点色使用主色
+    primaryFixed = Color(0xFFD4E3FF),
+    onPrimaryFixed = Color(0xFF001B3E),
+    primaryFixedDim = Color(0xFF78A8FF),
+    onPrimaryFixedVariant = Color(0xFF004C8C),
+    secondaryFixed = Color(0xFFE0E0F1),
+    onSecondaryFixed = Color(0xFF191A2C),
+    secondaryFixedDim = Color(0xFFC4C3DC),
+    onSecondaryFixedVariant = Color(0xFF464659),
+    tertiaryFixed = Color(0xFFFFD7F6),
+    onTertiaryFixed = Color(0xFF2E152C),
+    tertiaryFixedDim = Color(0xFFE3B7DE),
+    onTertiaryFixedVariant = Color(0xFF5E3C5C),
+)
+
+// ==================== 深色主题配色方案 ====================
+
+/**
+ * 深色主题完整 ColorScheme
+ * 柔和护眼风格，表面色采用 #1B1B1E 低对比度深灰
+ */
+private val DarkColorScheme = darkColorScheme(
+    // 主色
+    primary = DarkPrimary,
+    onPrimary = DarkOnPrimary,
+    primaryContainer = DarkPrimaryContainer,
+    onPrimaryContainer = DarkOnPrimaryContainer,
+    // 次要色
+    secondary = DarkSecondary,
+    onSecondary = DarkOnSecondary,
+    secondaryContainer = DarkSecondaryContainer,
+    onSecondaryContainer = DarkOnSecondaryContainer,
+    // 第三色
+    tertiary = DarkTertiary,
+    onTertiary = DarkOnTertiary,
+    tertiaryContainer = DarkTertiaryContainer,
+    onTertiaryContainer = DarkOnTertiaryContainer,
+    // 错误色
+    error = DarkError,
+    onError = DarkOnError,
+    errorContainer = DarkErrorContainer,
+    onErrorContainer = DarkOnErrorContainer,
+    // 背景与表面
+    background = DarkBackground,
+    onBackground = DarkOnBackground,
+    surface = DarkSurface,
+    onSurface = DarkOnSurface,
+    surfaceDim = DarkSurfaceDim,
+    surfaceBright = DarkSurfaceBright,
+    surfaceContainerLowest = DarkSurfaceContainerLowest,
+    surfaceContainerLow = DarkSurfaceContainerLow,
+    surfaceContainer = DarkSurfaceContainer,
+    surfaceContainerHigh = DarkSurfaceContainerHigh,
+    surfaceContainerHighest = DarkSurfaceContainerHighest,
+    surfaceVariant = DarkSurfaceVariant,
+    onSurfaceVariant = DarkOnSurfaceVariant,
+    // 轮廓色
+    outline = DarkOutline,
+    outlineVariant = DarkOutlineVariant,
+    // 反向色
+    inversePrimary = DarkInversePrimary,
+    inverseSurface = DarkInverseSurface,
+    inverseOnSurface = DarkInverseOnSurface,
+    // 滚动条色
+    scrollbar = DarkOutlineVariant,
+    // 固定色
+    primaryFixed = Color(0xFFD4E3FF),
+    onPrimaryFixed = Color(0xFF001B3E),
+    primaryFixedDim = Color(0xFF78A8FF),
+    onPrimaryFixedVariant = Color(0xFFA8C8FF),
+    secondaryFixed = Color(0xFFE0E0F1),
+    onSecondaryFixed = Color(0xFF191A2C),
+    secondaryFixedDim = Color(0xFFC4C3DC),
+    onSecondaryFixedVariant = Color(0xFFC4C3DC),
+    tertiaryFixed = Color(0xFFFFD7F6),
+    onTertiaryFixed = Color(0xFF2E152C),
+    tertiaryFixedDim = Color(0xFFE3B7DE),
+    onTertiaryFixedVariant = Color(0xFFE3B7DE),
+)
+
+// ==================== 组件形状系统 ====================
+
+/**
+ * NetGuardian 组件圆角定义
+ */
+object NetGuardianShapes {
+    /** 卡片圆角 */
+    val CardShape = CardDefaults.shape // Material3 默认 12dp
+
+    /** 大卡片圆角 - 16dp */
+    val CardLarge = CardDefaults.shape
+
+    /** 小卡片圆角 - 8dp */
+    val CardSmall = CardDefaults.shape
+
+    /** 按钮圆角 */
+    val ButtonShape = ButtonDefaults.shape
+
+    /** FAB 圆角 */
+    val FabShape = FloatingActionButtonDefaults.shape
+
+    /** 对话框圆角 - 28dp */
+    val DialogShape = ShapeDefaults.ExtraLarge
+
+    /** 底部面板圆角 - 28dp */
+    val BottomSheetShape = ShapeDefaults.ExtraLarge
+
+    /** 芯片/标签圆角 */
+    val ChipShape = ShapeDefaults.Medium // 8dp
+}
+
+// ==================== 主题入口 ====================
+
+/**
+ * NetGuardian 全局主题入口 Composable
  *
- * @param darkTheme 是否启用深色主题，默认跟随系统
- * @param dynamicColor 是否启用Android 12+动态颜色，默认true
+ * 包裹在应用最外层，提供完整的 Material3 主题体系。
+ * 支持动态颜色（Android 12+），当动态颜色不可用时回退到
+ * 自定义的专业级配色方案。
+ *
+ * @param darkTheme 是否启用深色主题，默认跟随系统设置
+ * @param dynamicColor 是否启用 Android 12+ 动态颜色，默认 true。
+ *                     仅在 Android 12+ 设备上生效，低版本自动回退到自定义配色
  * @param content 主题包裹的页面内容
  */
 @Composable
@@ -33,8 +221,9 @@ fun NetGuardianTheme(
     dynamicColor: Boolean = true,
     content: @Composable () -> Unit
 ) {
-    // 动态颜色仅Android 12+ (SDK 31+)可用
+    // 根据设备能力和用户偏好选择配色方案
     val colorScheme = when {
+        // Android 12+ 动态颜色，仅在用户启用时生效
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
             if (darkTheme) {
@@ -43,106 +232,32 @@ fun NetGuardianTheme(
                 dynamicLightColorScheme(context)
             }
         }
-        darkTheme -> darkColorScheme()
-        else -> lightColorScheme()
+        // 非 Android 12+ 或用户禁用动态颜色，使用自定义配色
+        darkTheme -> DarkColorScheme
+        else -> LightColorScheme
     }
 
-    // 将状态栏颜色设为透明，实现沉浸式效果
+    // 沉浸式状态栏与导航栏适配
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = colorScheme.primary.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            // 状态栏透明，实现沉浸式效果
+            window.statusBarColor = Color.Transparent.toArgb()
+            // 导航栏透明
+            window.navigationBarColor = Color.Transparent.toArgb()
+            // 根据主题设置状态栏图标深浅色
+            val insetsController = WindowCompat.getInsetsController(window, view)
+            insetsController.isAppearanceLightStatusBars = !darkTheme
+            insetsController.isAppearanceLightNavigationBars = !darkTheme
         }
     }
 
-    // 应用Material3主题
+    // 应用 Material3 主题
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography,
+        shapes = ShapeDefaults.Medium,
         content = content
     )
-}
-
-/**
- * 浅色主题配色方案
- * 使用自定义品牌色
- */
-@Composable
-private fun lightColorScheme(
-    dynamicColor: Boolean = false
-): ColorScheme {
-    return if (dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        val context = LocalContext.current
-        dynamicLightColorScheme(context)
-    } else {
-        lightColorScheme(
-            primary = Primary,
-            onPrimary = OnPrimary,
-            primaryContainer = PrimaryContainer,
-            onPrimaryContainer = OnPrimaryContainer,
-            secondary = Secondary,
-            onSecondary = OnSecondary,
-            secondaryContainer = SecondaryContainer,
-            onSecondaryContainer = OnSecondaryContainer,
-            tertiary = Tertiary,
-            onTertiary = OnTertiary,
-            tertiaryContainer = TertiaryContainer,
-            onTertiaryContainer = OnTertiaryContainer,
-            error = Error,
-            onError = OnError,
-            errorContainer = ErrorContainer,
-            onErrorContainer = OnErrorContainer,
-            background = Background,
-            onBackground = OnBackground,
-            surface = Surface,
-            onSurface = OnSurface,
-            surfaceVariant = SurfaceVariant,
-            onSurfaceVariant = OnSurfaceVariant,
-            outline = Outline,
-            outlineVariant = OutlineVariant
-        )
-    }
-}
-
-/**
- * 深色主题配色方案
- * 使用自定义深色品牌色
- */
-@Composable
-private fun darkColorScheme(
-    dynamicColor: Boolean = false
-): ColorScheme {
-    return if (dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        val context = LocalContext.current
-        dynamicDarkColorScheme(context)
-    } else {
-        darkColorScheme(
-            primary = DarkPrimary,
-            onPrimary = DarkOnPrimary,
-            primaryContainer = DarkPrimaryContainer,
-            onPrimaryContainer = DarkOnPrimaryContainer,
-            secondary = SecondaryLight,
-            onSecondary = OnSecondary,
-            secondaryContainer = SecondaryContainer,
-            onSecondaryContainer = OnSecondaryContainer,
-            tertiary = TertiaryLight,
-            onTertiary = OnTertiary,
-            tertiaryContainer = TertiaryContainer,
-            onTertiaryContainer = OnTertiaryContainer,
-            error = Error,
-            onError = OnError,
-            errorContainer = ErrorContainer,
-            onErrorContainer = OnErrorContainer,
-            background = DarkBackground,
-            onBackground = DarkOnBackground,
-            surface = DarkSurface,
-            onSurface = DarkOnSurface,
-            surfaceVariant = DarkSurfaceVariant,
-            onSurfaceVariant = DarkOnSurfaceVariant,
-            outline = DarkOutline,
-            outlineVariant = DarkOutlineVariant
-        )
-    }
 }

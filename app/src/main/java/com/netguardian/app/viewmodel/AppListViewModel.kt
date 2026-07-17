@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.netguardian.app.core.TrafficMonitorEngine
+import com.netguardian.app.data.AppInfo
 import com.netguardian.app.model.AppTrafficInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
@@ -14,7 +15,7 @@ import kotlinx.coroutines.withContext
  * 应用列表页面ViewModel
  * 负责以下功能：
  * 1. 获取并展示已安装应用的流量信息列表
- * 2. 支持按流量/名称排序
+ * 2. 支持按流量/名称/移动流量/WiFi流量排序
  * 3. 支持搜索过滤
  * 4. 定期刷新流量数据
  */
@@ -106,7 +107,7 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
     init {
-        // 首次加载应用列表
+        // 首次加载应用列表：先获取已安装应用，再获取每个应用的流量
         loadAppList()
         // 启动定期刷新
         startPeriodicRefresh()
@@ -114,15 +115,27 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
 
     /**
      * 加载应用流量列表
-     * 从TrafficMonitorEngine获取已安装应用及其流量数据
+     * 步骤：
+     * 1. 通过 TrafficMonitorEngine.getInstalledApps() 获取所有已安装的用户可见应用
+     * 2. 通过 TrafficMonitorEngine.getPerAppTraffic() 获取每个应用的精确流量数据
+     * 3. 更新UI状态
      */
     fun loadAppList() {
         viewModelScope.launch {
             _isLoading.value = true
             try {
+                // 第一步：获取已安装应用列表
+                val installedApps: List<AppInfo> = withContext(Dispatchers.IO) {
+                    trafficEngine.getInstalledApps(getApplication())
+                }
+
+                _totalAppCount.value = installedApps.size
+
+                // 第二步：获取每个应用的流量数据
                 val apps = withContext(Dispatchers.IO) {
                     trafficEngine.getPerAppTraffic()
                 }
+
                 _allApps.value = apps
                 _activeAppCount.value = apps.size
                 _totalTraffic.value = apps.sumOf { it.totalBytes }

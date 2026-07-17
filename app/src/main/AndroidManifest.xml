@@ -21,6 +21,7 @@
         android:maxSdkVersion="33" />
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
 
     <!-- ============================================================ -->
     <!-- 通知权限 (Android 13+) -->

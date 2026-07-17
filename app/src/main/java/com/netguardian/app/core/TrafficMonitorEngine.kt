@@ -1,10 +1,15 @@
 package com.netguardian.app.core
 
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ApplicationInfo
-import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.TrafficStats
+import android.os.Build
 import android.util.Log
+import com.netguardian.app.data.AppInfo
 import com.netguardian.app.model.AppTrafficInfo
 import com.netguardian.app.model.NetworkSpeedInfo
 import com.netguardian.app.util.Constants
@@ -13,7 +18,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
-import java.net.NetworkInterface
 
 /**
  * 流量监控引擎核心
@@ -35,10 +39,49 @@ class TrafficMonitorEngine(private val context: Context) {
 
         /** TrafficStats中获取不到数据时的返回值 */
         private const val UNSUPPORTED = -1L
+
+        /** 用于流量比例分配的阈值，避免除零 */
+        private const val TRAFFIC_SPLIT_MIN_TOTAL = 1L
     }
 
     private val rootManager = RootManager.getInstance()
     private val shizukuManager = ShizukuManager.getInstance()
+
+    /** 运营商管理器 */
+    private val carrierManager = CarrierManager(context)
+
+    // ==================== 运营商信息 ====================
+
+    /**
+     * 获取运营商信息
+     * @return CarrierInfo 或 null
+     */
+    fun getCarrierInfo(): CarrierInfo? {
+        return carrierManager.detectCarrier()
+    }
+
+    /**
+     * 获取运营商显示名称
+     * @return 运营商中文名（如"中国移动"、"中国联通"、"中国电信"）
+     */
+    fun getCarrierDisplayName(): String {
+        return carrierManager.getCarrierDisplayName()
+    }
+
+    /**
+     * 获取网络类型名称（4G/5G/3G等）
+     * @return 网络类型字符串
+     */
+    fun getNetworkTypeName(): String {
+        return try {
+            val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? android.telephony.TelephonyManager
+            tm?.let { carrierManager.getNetworkTypeName(it.dataNetworkType) } ?: "未知"
+        } catch (e: Exception) {
+            "未知"
+        }
+    }
+
+    // ==================== 权限模式 ====================
 
     /**
      * 获取当前权限模式
@@ -51,6 +94,8 @@ class TrafficMonitorEngine(private val context: Context) {
             else -> Constants.MODE_NONE
         }
     }
+
+    // ==================== 系统流量统计 ====================
 
     /**
      * 获取系统总流量（接收 + 发送）
@@ -83,11 +128,13 @@ class TrafficMonitorEngine(private val context: Context) {
         return Pair(validRx, validTx)
     }
 
+    // ==================== 应用流量采集 ====================
+
     /**
      * 获取所有应用的流量信息列表
      * 根据当前权限模式选择不同的数据采集方式：
-     * - Root/Shizuku模式：从/proc/uid_stat/读取精确数据
-     * - 普通模式：使用TrafficStats.getUidRxBytes()/getUidTxBytes()
+     * - Root/Shizuku模式：从/proc/uid_stat/读取精确数据，结合ConnectivityManager区分移动/WiFi
+     * - 普通模式：使用TrafficStats.getUidRxBytes()/getUidTxBytes()，通过全局流量比例区分移动/WiFi
      *
      * @return 按总流量降序排列的应用流量信息列表
      */
@@ -106,26 +153,38 @@ class TrafficMonitorEngine(private val context: Context) {
     /**
      * Root模式下获取应用流量
      * 使用/proc/uid_stat/{uid}/下的tcp_rcv和tcp_snd文件
+     * 通过ConnectivityManager区分移动数据和WiFi流量
      */
-    private fun getPerAppTrafficRoot(apps: List<com.netguardian.app.data.AppInfo>): List<AppTrafficInfo> {
+    private fun getPerAppTrafficRoot(apps: List<AppInfo>): List<AppTrafficInfo> {
         val trafficList = mutableListOf<AppTrafficInfo>()
+
+        // 获取当前网络状态用于流量分类
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        val isWifi = isWifiConnected(cm)
+        val isMobile = isMobileConnected(cm)
 
         for (app in apps) {
             try {
                 val trafficData = rootManager.getProcessTraffic(app.uid)
                 if (trafficData.totalBytes > 0) {
+                    // 根据当前网络类型分配移动/WiFi流量
+                    val (mobileRx, mobileTx, wifiRx, wifiTx) = classifyTraffic(
+                        totalRx = trafficData.rxBytes,
+                        totalTx = trafficData.txBytes,
+                        isWifiConnected = isWifi,
+                        isMobileConnected = isMobile
+                    )
+
                     trafficList.add(
                         AppTrafficInfo(
                             uid = app.uid,
                             packageName = app.packageName,
                             appName = app.appName,
                             icon = app.icon,
-                            // Root模式下无法直接区分移动/WiFi，需要通过接口判断
-                            // 这里将/proc数据作为WiFi流量（估算）
-                            mobileRxBytes = 0L,
-                            mobileTxBytes = 0L,
-                            wifiRxBytes = trafficData.rxBytes,
-                            wifiTxBytes = trafficData.txBytes,
+                            mobileRxBytes = mobileRx,
+                            mobileTxBytes = mobileTx,
+                            wifiRxBytes = wifiRx,
+                            wifiTxBytes = wifiTx,
                             lastUpdated = System.currentTimeMillis()
                         )
                     )
@@ -141,24 +200,38 @@ class TrafficMonitorEngine(private val context: Context) {
     /**
      * Shizuku模式下获取应用流量
      * 通过Shizuku远程执行命令读取/proc/uid_stat/
+     * 通过ConnectivityManager区分移动数据和WiFi流量
      */
-    private fun getPerAppTrafficShizuku(apps: List<com.netguardian.app.data.AppInfo>): List<AppTrafficInfo> {
+    private fun getPerAppTrafficShizuku(apps: List<AppInfo>): List<AppTrafficInfo> {
         val trafficList = mutableListOf<AppTrafficInfo>()
+
+        // 获取当前网络状态用于流量分类
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        val isWifi = isWifiConnected(cm)
+        val isMobile = isMobileConnected(cm)
 
         for (app in apps) {
             try {
                 val (rx, tx) = shizukuManager.getUidTrafficShizuku(app.uid)
                 if (rx > 0 || tx > 0) {
+                    // 根据当前网络类型分配移动/WiFi流量
+                    val (mobileRx, mobileTx, wifiRx, wifiTx) = classifyTraffic(
+                        totalRx = rx,
+                        totalTx = tx,
+                        isWifiConnected = isWifi,
+                        isMobileConnected = isMobile
+                    )
+
                     trafficList.add(
                         AppTrafficInfo(
                             uid = app.uid,
                             packageName = app.packageName,
                             appName = app.appName,
                             icon = app.icon,
-                            mobileRxBytes = 0L,
-                            mobileTxBytes = 0L,
-                            wifiRxBytes = rx,
-                            wifiTxBytes = tx,
+                            mobileRxBytes = mobileRx,
+                            mobileTxBytes = mobileTx,
+                            wifiRxBytes = wifiRx,
+                            wifiTxBytes = wifiTx,
                             lastUpdated = System.currentTimeMillis()
                         )
                     )
@@ -173,10 +246,23 @@ class TrafficMonitorEngine(private val context: Context) {
 
     /**
      * 普通模式（无Root/Shizuku）下获取应用流量
-     * 使用Android TrafficStats API，精度较低，无法区分移动/WiFi
+     * 使用Android TrafficStats API获取精确的Per-UID流量
+     * 通过ConnectivityManager获取当前网络类型，结合TrafficStats全局移动流量比例
+     * 区分每个应用的移动数据和WiFi流量
      */
-    private fun getPerAppTrafficNormal(apps: List<com.netguardian.app.data.AppInfo>): List<AppTrafficInfo> {
+    private fun getPerAppTrafficNormal(apps: List<AppInfo>): List<AppTrafficInfo> {
         val trafficList = mutableListOf<AppTrafficInfo>()
+
+        // 获取ConnectivityManager用于网络类型判断
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        val isWifi = isWifiConnected(cm)
+        val isMobile = isMobileConnected(cm)
+
+        // 获取全局流量数据用于比例分配（当WiFi和移动同时连接时使用）
+        val totalRx = TrafficStats.getTotalRxBytes().let { if (it == UNSUPPORTED.toLong()) 0L else it }
+        val totalTx = TrafficStats.getTotalTxBytes().let { if (it == UNSUPPORTED.toLong()) 0L else it }
+        val mobileTotalRx = TrafficStats.getMobileRxBytes().let { if (it == UNSUPPORTED.toLong()) 0L else it }
+        val mobileTotalTx = TrafficStats.getMobileTxBytes().let { if (it == UNSUPPORTED.toLong()) 0L else it }
 
         for (app in apps) {
             try {
@@ -185,26 +271,48 @@ class TrafficMonitorEngine(private val context: Context) {
                 val tx = TrafficStats.getUidTxBytes(uid)
 
                 // TrafficStats返回-1表示不支持
-                if (rx != UNSUPPORTED.toLong() || tx != UNSUPPORTED.toLong()) {
-                    val validRx = if (rx == UNSUPPORTED.toLong()) 0L else rx
-                    val validTx = if (tx == UNSUPPORTED.toLong()) 0L else tx
+                if (rx == UNSUPPORTED.toLong() && tx == UNSUPPORTED.toLong()) {
+                    continue
+                }
 
-                    if (validRx > 0 || validTx > 0) {
-                        trafficList.add(
-                            AppTrafficInfo(
-                                uid = uid,
-                                packageName = app.packageName,
-                                appName = app.appName,
-                                icon = app.icon,
-                                // 普通模式无法区分移动/WiFi，统一归入WiFi
-                                mobileRxBytes = 0L,
-                                mobileTxBytes = 0L,
-                                wifiRxBytes = validRx,
-                                wifiTxBytes = validTx,
-                                lastUpdated = System.currentTimeMillis()
-                            )
-                        )
+                val validRx = if (rx == UNSUPPORTED.toLong()) 0L else rx
+                val validTx = if (tx == UNSUPPORTED.toLong()) 0L else tx
+
+                if (validRx > 0 || validTx > 0) {
+                    // 根据网络连接状态区分移动/WiFi流量
+                    val (mobileRx, mobileTx, wifiRx, wifiTx) = when {
+                        // 仅WiFi：全部归WiFi
+                        isWifi && !isMobile -> TrafficAllocation(0L, 0L, validRx, validTx)
+                        // 仅移动：全部归移动
+                        isMobile && !isWifi -> TrafficAllocation(validRx, validTx, 0L, 0L)
+                        // 两者同时连接或都未连接：按全局流量比例分配
+                        else -> {
+                            val globalTotal = totalRx + totalTx
+                            val globalMobile = mobileTotalRx + mobileTotalTx
+                            val mobileRatio = if (globalTotal >= TRAFFIC_SPLIT_MIN_TOTAL) {
+                                globalMobile.toDouble() / globalTotal.toDouble()
+                            } else {
+                                0.0
+                            }
+                            val mRx = (validRx * mobileRatio).toLong()
+                            val mTx = (validTx * mobileRatio).toLong()
+                            TrafficAllocation(mRx, mTx, validRx - mRx, validTx - mTx)
+                        }
                     }
+
+                    trafficList.add(
+                        AppTrafficInfo(
+                            uid = uid,
+                            packageName = app.packageName,
+                            appName = app.appName,
+                            icon = app.icon,
+                            mobileRxBytes = mobileRx,
+                            mobileTxBytes = mobileTx,
+                            wifiRxBytes = wifiRx,
+                            wifiTxBytes = wifiTx,
+                            lastUpdated = System.currentTimeMillis()
+                        )
+                    )
                 }
             } catch (e: Exception) {
                 Log.d(TAG, "普通模式读取 ${app.packageName} 流量失败: ${e.message}")
@@ -213,6 +321,8 @@ class TrafficMonitorEngine(private val context: Context) {
 
         return trafficList.sortedByDescending { it.totalBytes }
     }
+
+    // ==================== 实时网速监测 ====================
 
     /**
      * 实时网速监测
@@ -277,36 +387,46 @@ class TrafficMonitorEngine(private val context: Context) {
         }.flowOn(Dispatchers.IO)
     }
 
+    // ==================== 网络类型检测 ====================
+
     /**
      * 检测当前网络类型
-     * 通过NetworkInterface枚举网络接口来判断
+     * 通过ConnectivityManager API精确判断网络连接类型
      *
      * @return "WiFi" / "Mobile" / "None"
      */
     fun detectNetworkType(): String {
         return try {
-            val interfaces = NetworkInterface.getNetworkInterfaces()
-            var hasWifi = false
-            var hasMobile = false
-
-            while (interfaces?.hasMoreElements() == true) {
-                val ni = interfaces.nextElement()
-                val name = ni.name.lowercase()
-                if (name.startsWith("wlan") || name.startsWith("eth")) {
-                    if (ni.isUp && !ni.isLoopback) {
-                        hasWifi = true
-                    }
-                } else if (name.startsWith("rmnet") || name.startsWith("ccmni") || name.startsWith("rmnet_data")) {
-                    if (ni.isUp) {
-                        hasMobile = true
-                    }
-                }
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            if (cm == null) {
+                Log.d(TAG, "无法获取ConnectivityManager")
+                return Constants.NETWORK_TYPE_NONE
             }
 
-            when {
-                hasWifi -> Constants.NETWORK_TYPE_WIFI
-                hasMobile -> Constants.NETWORK_TYPE_MOBILE
-                else -> Constants.NETWORK_TYPE_NONE
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val network: android.net.Network? = cm.activeNetwork
+                val capabilities = cm.getNetworkCapabilities(network)
+                when {
+                    capabilities == null -> Constants.NETWORK_TYPE_NONE
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> Constants.NETWORK_TYPE_WIFI
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> Constants.NETWORK_TYPE_MOBILE
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> Constants.NETWORK_TYPE_WIFI
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> {
+                        // VPN连接时，检查底层网络类型
+                        detectUnderlyingNetworkType(cm)
+                    }
+                    else -> Constants.NETWORK_TYPE_NONE
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                val networkInfo = cm.activeNetworkInfo
+                when (networkInfo?.type) {
+                    ConnectivityManager.TYPE_WIFI, ConnectivityManager.TYPE_ETHERNET -> Constants.NETWORK_TYPE_WIFI
+                    ConnectivityManager.TYPE_MOBILE, ConnectivityManager.TYPE_MOBILE_DUN,
+                    ConnectivityManager.TYPE_MOBILE_HIPRI, ConnectivityManager.TYPE_MOBILE_MMS,
+                    ConnectivityManager.TYPE_MOBILE_SUPL -> Constants.NETWORK_TYPE_MOBILE
+                    else -> Constants.NETWORK_TYPE_NONE
+                }
             }
         } catch (e: Exception) {
             Log.d(TAG, "检测网络类型失败: ${e.message}")
@@ -315,17 +435,62 @@ class TrafficMonitorEngine(private val context: Context) {
     }
 
     /**
+     * VPN连接时检测底层网络类型
+     * 遍历所有网络，找到非VPN的活跃网络
+     */
+    @Suppress("DEPRECATION")
+    private fun detectUnderlyingNetworkType(cm: ConnectivityManager): String {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1) {
+                val allNetworks = cm.allNetworks
+                for (network in allNetworks) {
+                    if (network == cm.activeNetwork) continue // 跳过VPN本身
+                    val caps = cm.getNetworkCapabilities(network) ?: continue
+                    val networkInfo = cm.getNetworkInfo(network) ?: continue
+                    if (!networkInfo.isConnected) continue
+
+                    return when {
+                        caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> Constants.NETWORK_TYPE_WIFI
+                        caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> Constants.NETWORK_TYPE_MOBILE
+                        caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> Constants.NETWORK_TYPE_WIFI
+                        else -> continue
+                    }
+                }
+            }
+            Constants.NETWORK_TYPE_NONE
+        } catch (e: Exception) {
+            Constants.NETWORK_TYPE_NONE
+        }
+    }
+
+    // ==================== 已安装应用列表 ====================
+
+    /**
      * 获取已安装应用列表
-     * 过滤系统应用（可选），获取包名、应用名、UID、图标等信息
+     * 使用 PackageManager.MATCH_ALL (0x00020000) 获取所有已安装应用
+     * 通过 Intent.ACTION_MAIN + Intent.CATEGORY_LAUNCHER 过滤出用户可见的启动器应用
      *
      * @param context 上下文
      * @param includeSystemApps 是否包含系统应用，默认false
      * @return 应用信息列表
      */
-    fun getInstalledApps(context: Context, includeSystemApps: Boolean = false): List<com.netguardian.app.data.AppInfo> {
+    fun getInstalledApps(context: Context, includeSystemApps: Boolean = false): List<AppInfo> {
         val pm = context.packageManager
-        val packages = pm.getInstalledPackages(0x00000200) // MATCH_UNINSTALLED_PACKAGES
-        val appList = mutableListOf<com.netguardian.app.data.AppInfo>()
+
+        // 使用 PackageManager.MATCH_ALL (0x00020000) 代替已废弃的标志
+        val flags = PackageManager.MATCH_ALL // 0x00020000
+
+        @Suppress("DEPRECATION")
+        val packages = pm.getInstalledPackages(flags)
+        val appList = mutableListOf<AppInfo>()
+
+        // 构建 LAUNCHER 意图，用于过滤用户可见应用
+        val launcherIntent = Intent(Intent.ACTION_MAIN, null).apply {
+            addCategory(Intent.CATEGORY_LAUNCHER)
+        }
+        val launchablePackages = pm.queryIntentActivities(launcherIntent, PackageManager.MATCH_ALL)
+            .map { it.activityInfo.packageName }
+            .toSet()
 
         for (packageInfo in packages) {
             try {
@@ -333,6 +498,10 @@ class TrafficMonitorEngine(private val context: Context) {
 
                 // 过滤系统应用（可选）
                 if (!includeSystemApps) {
+                    // 只保留有 LAUNCHER 的用户可见应用
+                    if (packageInfo.packageName !in launchablePackages) {
+                        continue
+                    }
                     if ((appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0) {
                         continue
                     }
@@ -343,15 +512,20 @@ class TrafficMonitorEngine(private val context: Context) {
                     continue
                 }
 
+                // 加载应用名称
                 val appName = appInfo.loadLabel(pm).toString()
+                if (appName.isBlank()) continue
+
+                // 加载应用图标
                 val icon = try {
                     appInfo.loadIcon(pm)
                 } catch (e: Exception) {
-                    null
+                    Log.d(TAG, "加载 ${packageInfo.packageName} 图标失败: ${e.message}")
+                    pm.getDefaultActivityIcon()
                 }
 
                 appList.add(
-                    com.netguardian.app.data.AppInfo(
+                    AppInfo(
                         packageName = packageInfo.packageName,
                         appName = appName,
                         uid = appInfo.uid,
@@ -370,6 +544,8 @@ class TrafficMonitorEngine(private val context: Context) {
         return appList.sortedBy { it.appName.lowercase() }
     }
 
+    // ==================== 单应用流量查询 ====================
+
     /**
      * 获取单个应用的流量信息
      *
@@ -381,28 +557,49 @@ class TrafficMonitorEngine(private val context: Context) {
     fun getAppTraffic(uid: Int, packageName: String, appName: String): AppTrafficInfo? {
         val mode = getPrivilegeMode()
 
+        // 获取当前网络状态
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        val isWifi = isWifiConnected(cm)
+        val isMobile = isMobileConnected(cm)
+
         return when (mode) {
             Constants.MODE_ROOT -> {
                 val data = rootManager.getProcessTraffic(uid)
                 if (data.totalBytes > 0) {
+                    val (mRx, mTx, wRx, wTx) = classifyTraffic(
+                        totalRx = data.rxBytes,
+                        totalTx = data.txBytes,
+                        isWifiConnected = isWifi,
+                        isMobileConnected = isMobile
+                    )
                     AppTrafficInfo(
                         uid = uid,
                         packageName = packageName,
                         appName = appName,
-                        wifiRxBytes = data.rxBytes,
-                        wifiTxBytes = data.txBytes
+                        mobileRxBytes = mRx,
+                        mobileTxBytes = mTx,
+                        wifiRxBytes = wRx,
+                        wifiTxBytes = wTx
                     )
                 } else null
             }
             Constants.MODE_SHIZUKU -> {
                 val (rx, tx) = shizukuManager.getUidTrafficShizuku(uid)
                 if (rx > 0 || tx > 0) {
+                    val (mRx, mTx, wRx, wTx) = classifyTraffic(
+                        totalRx = rx,
+                        totalTx = tx,
+                        isWifiConnected = isWifi,
+                        isMobileConnected = isMobile
+                    )
                     AppTrafficInfo(
                         uid = uid,
                         packageName = packageName,
                         appName = appName,
-                        wifiRxBytes = rx,
-                        wifiTxBytes = tx
+                        mobileRxBytes = mRx,
+                        mobileTxBytes = mTx,
+                        wifiRxBytes = wRx,
+                        wifiTxBytes = wTx
                     )
                 } else null
             }
@@ -410,17 +607,45 @@ class TrafficMonitorEngine(private val context: Context) {
                 val rx = TrafficStats.getUidRxBytes(uid)
                 val tx = TrafficStats.getUidTxBytes(uid)
                 if (rx > 0 && rx != UNSUPPORTED.toLong()) {
+                    val validRx = if (rx == UNSUPPORTED.toLong()) 0L else rx
+                    val validTx = if (tx == UNSUPPORTED.toLong()) 0L else tx
+
+                    // 区分移动/WiFi流量
+                    val totalRx = TrafficStats.getTotalRxBytes().let { if (it == UNSUPPORTED.toLong()) 0L else it }
+                    val totalTx = TrafficStats.getTotalTxBytes().let { if (it == UNSUPPORTED.toLong()) 0L else it }
+                    val mobileTotalRx = TrafficStats.getMobileRxBytes().let { if (it == UNSUPPORTED.toLong()) 0L else it }
+                    val mobileTotalTx = TrafficStats.getMobileTxBytes().let { if (it == UNSUPPORTED.toLong()) 0L else it }
+
+                    val allocation = when {
+                        isWifi && !isMobile -> TrafficAllocation(0L, 0L, validRx, validTx)
+                        isMobile && !isWifi -> TrafficAllocation(validRx, validTx, 0L, 0L)
+                        else -> {
+                            val globalTotal = totalRx + totalTx
+                            val globalMobile = mobileTotalRx + mobileTotalTx
+                            val mobileRatio = if (globalTotal >= TRAFFIC_SPLIT_MIN_TOTAL) {
+                                globalMobile.toDouble() / globalTotal.toDouble()
+                            } else 0.0
+                            val mRx = (validRx * mobileRatio).toLong()
+                            val mTx = (validTx * mobileRatio).toLong()
+                            TrafficAllocation(mRx, mTx, validRx - mRx, validTx - mTx)
+                        }
+                    }
+
                     AppTrafficInfo(
                         uid = uid,
                         packageName = packageName,
                         appName = appName,
-                        wifiRxBytes = rx,
-                        wifiTxBytes = if (tx > 0) tx else 0L
+                        mobileRxBytes = allocation.mobileRx,
+                        mobileTxBytes = allocation.mobileTx,
+                        wifiRxBytes = allocation.wifiRx,
+                        wifiTxBytes = allocation.wifiTx
                     )
                 } else null
             }
         }
     }
+
+    // ==================== 网络接口流量详情 ====================
 
     /**
      * 获取当前网络接口的详细流量信息
@@ -435,6 +660,116 @@ class TrafficMonitorEngine(private val context: Context) {
             // 普通模式只能返回TrafficStats的全局数据
             val (rx, tx) = getSystemTotalTraffic()
             mapOf("total" to Pair(rx, tx))
+        }
+    }
+
+    // ==================== 内部辅助方法 ====================
+
+    /**
+     * 流量分配结果数据类
+     * 用于将总流量拆分为移动网络和WiFi两部分
+     */
+    private data class TrafficAllocation(
+        val mobileRx: Long,
+        val mobileTx: Long,
+        val wifiRx: Long,
+        val wifiTx: Long
+    )
+
+    /**
+     * 根据当前网络连接状态分类流量
+     * 当仅有一种网络连接时，流量全部归入该类型
+     * 当同时连接WiFi和移动网络时，按全局流量比例分配
+     *
+     * @param totalRx 应用总接收字节数
+     * @param totalTx 应用总发送字节数
+     * @param isWifiConnected WiFi是否连接
+     * @param isMobileConnected 移动数据是否连接
+     * @return TrafficAllocation 包含分类后的移动和WiFi流量
+     */
+    private fun classifyTraffic(
+        totalRx: Long,
+        totalTx: Long,
+        isWifiConnected: Boolean,
+        isMobileConnected: Boolean
+    ): TrafficAllocation {
+        return when {
+            // 仅WiFi连接
+            isWifiConnected && !isMobileConnected -> {
+                TrafficAllocation(mobileRx = 0L, mobileTx = 0L, wifiRx = totalRx, wifiTx = totalTx)
+            }
+            // 仅移动数据连接
+            isMobileConnected && !isWifiConnected -> {
+                TrafficAllocation(mobileRx = totalRx, mobileTx = totalTx, wifiRx = 0L, wifiTx = 0L)
+            }
+            // 两者同时连接：按全局流量比例分配
+            isWifiConnected && isMobileConnected -> {
+                val sysTotalRx = TrafficStats.getTotalRxBytes().let { if (it == UNSUPPORTED.toLong()) 0L else it }
+                val sysTotalTx = TrafficStats.getTotalTxBytes().let { if (it == UNSUPPORTED.toLong()) 0L else it }
+                val sysMobileRx = TrafficStats.getMobileRxBytes().let { if (it == UNSUPPORTED.toLong()) 0L else it }
+                val sysMobileTx = TrafficStats.getMobileTxBytes().let { if (it == UNSUPPORTED.toLong()) 0L else it }
+
+                val globalTotal = sysTotalRx + sysTotalTx
+                val globalMobile = sysMobileRx + sysMobileTx
+                val mobileRatio = if (globalTotal >= TRAFFIC_SPLIT_MIN_TOTAL) {
+                    globalMobile.toDouble() / globalTotal.toDouble()
+                } else {
+                    0.5 // 无法确定比例时平均分配
+                }
+
+                val mRx = (totalRx * mobileRatio).toLong()
+                val mTx = (totalTx * mobileRatio).toLong()
+                TrafficAllocation(
+                    mobileRx = mRx, mobileTx = mTx,
+                    wifiRx = totalRx - mRx, wifiTx = totalTx - mTx
+                )
+            }
+            // 都未连接：归入WiFi（兜底）
+            else -> {
+                TrafficAllocation(mobileRx = 0L, mobileTx = 0L, wifiRx = totalRx, wifiTx = totalTx)
+            }
+        }
+    }
+
+    /**
+     * 检查WiFi是否已连接
+     * @param cm ConnectivityManager实例，可为null
+     * @return true表示WiFi已连接
+     */
+    private fun isWifiConnected(cm: ConnectivityManager?): Boolean {
+        if (cm == null) return false
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val network = cm.activeNetwork
+                val capabilities = cm.getNetworkCapabilities(network)
+                capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+            } else {
+                @Suppress("DEPRECATION")
+                cm.activeNetworkInfo?.type == ConnectivityManager.TYPE_WIFI
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * 检查移动数据是否已连接
+     * @param cm ConnectivityManager实例，可为null
+     * @return true表示移动数据已连接
+     */
+    private fun isMobileConnected(cm: ConnectivityManager?): Boolean {
+        if (cm == null) return false
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val network = cm.activeNetwork
+                val capabilities = cm.getNetworkCapabilities(network)
+                capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
+            } else {
+                @Suppress("DEPRECATION")
+                cm.activeNetworkInfo?.type == ConnectivityManager.TYPE_MOBILE
+            }
+        } catch (e: Exception) {
+            false
         }
     }
 }

@@ -1,6 +1,7 @@
 package com.netguardian.app.util
 
 import android.content.Context
+import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -8,6 +9,8 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.netguardian.app.data.AppDatabase
+import com.netguardian.app.model.TrafficRecord
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -20,6 +23,8 @@ import kotlinx.coroutines.flow.map
  * 所有数据存储在本地，纯离线运行，不进行任何网络请求
  */
 object DataStoreHelper {
+
+    private const val TAG = "DataStoreHelper"
 
     /** 通过扩展属性创建DataStore实例，文件名为netguardian_settings.preferences_pb */
     private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
@@ -361,4 +366,102 @@ object DataStoreHelper {
         /** 当前权限模式 */
         val privilegeMode: String
     )
+
+    // ==================== 数据导入/导出 ====================
+
+    /**
+     * 从JSON字符串导入流量记录数据
+     * 解析JSON格式的流量记录列表，并通过Room数据库的DAO进行批量插入恢复
+     *
+     * JSON格式要求：
+     * ```json
+     * [
+     *   {
+     *     "uid": 10086,
+     *     "packageName": "com.example.app",
+     *     "mobileRx": 1024,
+     *     "mobileTx": 512,
+     *     "wifiRx": 2048,
+     *     "wifiTx": 1024,
+     *     "date": "2026-07-17",
+     *     "timestamp": 1689500000000
+     *   }
+     * ]
+     * ```
+     *
+     * @param context 上下文
+     * @param json JSON格式的流量记录字符串
+     * @return 成功导入的记录数，失败返回-1
+     */
+    suspend fun importData(context: Context, json: String): Int {
+        return try {
+            // 解析JSON为TrafficRecord列表
+            val records = parseTrafficRecordsFromJson(json)
+            if (records.isEmpty()) {
+                Log.w(TAG, "导入数据为空")
+                return 0
+            }
+
+            Log.i(TAG, "开始导入 ${records.size} 条流量记录")
+
+            // 通过AppDatabase的clearAndImportRecords方法批量导入
+            val database = AppDatabase.getInstance(context)
+            val result = database.clearAndImportRecords(records)
+
+            if (result > 0) {
+                Log.i(TAG, "数据导入成功，共导入 $result 条记录")
+            } else {
+                Log.e(TAG, "数据导入失败")
+            }
+
+            result
+        } catch (e: Exception) {
+            Log.e(TAG, "导入数据异常: ${e.message}", e)
+            -1
+        }
+    }
+
+    /**
+     * 解析JSON字符串为TrafficRecord列表
+     * 使用简单的JSON解析，不依赖Gson等第三方库
+     *
+     * @param json JSON数组字符串
+     * @return TrafficRecord列表
+     */
+    private fun parseTrafficRecordsFromJson(json: String): List<TrafficRecord> {
+        val records = mutableListOf<TrafficRecord>()
+
+        try {
+            // 使用org.json包（Android内置）进行解析
+            val jsonArray = org.json.JSONArray(json)
+
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                try {
+                    val record = TrafficRecord(
+                        uid = obj.optInt("uid", 0),
+                        packageName = obj.optString("packageName", ""),
+                        mobileRx = obj.optLong("mobileRx", 0L),
+                        mobileTx = obj.optLong("mobileTx", 0L),
+                        wifiRx = obj.optLong("wifiRx", 0L),
+                        wifiTx = obj.optLong("wifiTx", 0L),
+                        date = obj.optString("date", ""),
+                        timestamp = obj.optLong("timestamp", System.currentTimeMillis())
+                    )
+
+                    // 跳过无效记录
+                    if (record.packageName.isNotBlank() && record.date.isNotBlank()) {
+                        records.add(record)
+                    }
+                } catch (e: Exception) {
+                    Log.d(TAG, "解析第 $i 条记录失败: ${e.message}")
+                    continue
+                }
+            }
+        } catch (e: org.json.JSONException) {
+            Log.e(TAG, "JSON解析失败: ${e.message}")
+        }
+
+        return records
+    }
 }

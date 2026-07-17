@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- ==================== 应用基础信息 ==================== -->
-    <string name="app_name">NetGuardian 流量卫士</string>
+    <string name="app_name">流量管家</string>
 
     <!-- ==================== 底部导航标签 ==================== -->
     <string name="nav_overview">总览</string>

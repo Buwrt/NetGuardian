@@ -7,6 +7,8 @@ import androidx.room.RoomDatabase
 import com.netguardian.app.model.AppControlState
 import com.netguardian.app.model.TrafficLimit
 import com.netguardian.app.model.TrafficRecord
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * 应用数据库
@@ -18,7 +20,7 @@ import com.netguardian.app.model.TrafficRecord
         TrafficLimit::class,
         AppControlState::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -27,6 +29,38 @@ abstract class AppDatabase : RoomDatabase() {
      * 获取流量数据访问对象
      */
     abstract fun trafficDao(): TrafficDao
+
+    /**
+     * 清空并批量导入流量记录
+     * 在数据库事务中执行，保证原子性：
+     * 1. 清空 traffic_records 表中的所有旧数据
+     * 2. 批量插入新的流量记录列表
+     *
+     * 适用于数据恢复场景：用户从备份文件恢复流量历史数据
+     *
+     * @param records 要导入的流量记录列表
+     * @return 成功插入的记录数
+     */
+    suspend fun clearAndImportRecords(records: List<TrafficRecord>): Int {
+        return withContext(Dispatchers.IO) {
+            try {
+                // 在事务中执行清空和导入
+                val dao = trafficDao()
+                withTransaction {
+                    // 先清空所有旧的流量记录
+                    dao.clearAllRecords()
+                    // 批量插入新记录
+                    if (records.isNotEmpty()) {
+                        dao.insertRecords(records)
+                    }
+                }
+                records.size
+            } catch (e: Exception) {
+                // 导入失败时返回-1
+                -1
+            }
+        }
+    }
 
     companion object {
         /** 数据库文件名 */

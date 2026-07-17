@@ -1,29 +1,72 @@
 package com.netguardian.app.ui.screen
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.animateIntAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Dangerous
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.WifiOff
+import androidx.compose.material.icons.filled.NetworkCell
+import androidx.compose.material.icons.filled.Phonelink
+import androidx.compose.material.icons.filled.SignalCellularOff
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.netguardian.app.ui.theme.*
+import com.netguardian.app.ui.theme.TrafficBlue
+import com.netguardian.app.ui.theme.TrafficGreen
+import com.netguardian.app.ui.theme.TrafficRed
 import com.netguardian.app.util.TrafficFormatter
 import com.netguardian.app.viewmodel.AppControlViewModel
 
@@ -32,9 +75,7 @@ import com.netguardian.app.viewmodel.AppControlViewModel
  * 提供单个应用的网络权限管理和流量限额设置
  * 包含移动数据/WiFi/后台网络开关、流量限额输入、强制断网功能
  *
- * @param packageName 目标应用包名
- * @param viewModel AppControlViewModel实例
- * @param onBack 返回回调
+ * 通过 AppNavigation 传递 packageName 参数
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,20 +103,43 @@ fun AppControlScreen(
     // 流量限额输入状态
     var mobileLimitInput by remember(mobileLimitMb) { mutableStateOf(mobileLimitMb) }
     var wifiLimitInput by remember(wifiLimitMb) { mutableStateOf(wifiLimitMb) }
+    var dailyLimitInput by remember { mutableStateOf("") }
+
+    // 流量详情周期选择
+    var selectedPeriod by remember { mutableStateOf(0) } // 0=日, 1=周, 2=月
 
     // 强制断网确认对话框
     var showForceDisconnectDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
-            AppControlTopBar(
-                appName = appName,
-                onBack = onBack
+            CenterAlignedTopAppBar(
+                title = {
+                    Text(
+                        text = appName,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "返回",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                windowInsets = WindowInsets(top = 0.dp)
             )
         }
     ) { paddingValues ->
         if (isLoading) {
-            // 加载状态
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -88,7 +152,6 @@ fun AppControlScreen(
                 )
             }
         } else {
-            // 主内容
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -97,47 +160,71 @@ fun AppControlScreen(
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // 1. 应用信息头部
-                AppInfoHeader(
+                // 1. 应用信息卡
+                AppInfoCard(
                     appName = appName,
                     icon = appIcon,
-                    packageName = packageName
+                    packageName = packageName,
+                    trafficInfo = trafficInfo
                 )
 
-                // 2. 网络权限控制区域
-                NetworkPermissionSection(
-                    mobileAllowed = mobileAllowed,
-                    wifiAllowed = wifiAllowed,
-                    backgroundAllowed = backgroundAllowed,
-                    isOperating = isOperating,
-                    onMobileToggle = { viewModel.setMobileAllowed(it) },
-                    onWifiToggle = { viewModel.setWifiAllowed(it) },
-                    onBackgroundToggle = { viewModel.setBackgroundAllowed(it) }
+                // 2. 移动数据开关卡片
+                NetworkSwitchCard(
+                    title = "移动数据",
+                    checked = mobileAllowed,
+                    enabled = !isOperating,
+                    statusText = if (mobileAllowed) "已允许" else "已禁止",
+                    icon = if (mobileAllowed) Icons.Default.NetworkCell else Icons.Default.SignalCellularOff,
+                    onCheckedChange = { viewModel.setMobileAllowed(it) }
                 )
 
-                // 3. 当前流量使用
-                CurrentTrafficSection(
-                    trafficInfo = trafficInfo,
-                    mobileUsagePercent = mobileUsagePercent,
-                    wifiUsagePercent = wifiUsagePercent,
-                    mobileLimit = mobileLimitInput,
-                    wifiLimit = wifiLimitInput
+                // 3. WiFi网络开关卡片
+                NetworkSwitchCard(
+                    title = "WiFi网络",
+                    checked = wifiAllowed,
+                    enabled = !isOperating,
+                    statusText = if (wifiAllowed) "已允许" else "已禁止",
+                    icon = if (wifiAllowed) Icons.Default.Wifi else Icons.Default.WifiOff,
+                    onCheckedChange = { viewModel.setWifiAllowed(it) }
                 )
 
-                // 4. 流量限额设置区域
-                TrafficLimitSection(
+                // 4. 后台网络开关卡片
+                NetworkSwitchCard(
+                    title = "后台联网",
+                    checked = backgroundAllowed,
+                    enabled = !isOperating,
+                    statusText = if (backgroundAllowed) "已允许" else "已禁止",
+                    icon = if (backgroundAllowed) Icons.Default.Phonelink else Icons.Default.Phonelink,
+                    onCheckedChange = { viewModel.setBackgroundAllowed(it) }
+                )
+
+                // 5. 流量限额设置区域
+                TrafficLimitCard(
                     mobileLimitInput = mobileLimitInput,
                     wifiLimitInput = wifiLimitInput,
+                    dailyLimitInput = dailyLimitInput,
                     onMobileLimitChange = { mobileLimitInput = it },
                     onWifiLimitChange = { wifiLimitInput = it },
+                    onDailyLimitChange = { dailyLimitInput = it },
                     isOperating = isOperating,
                     onSave = {
                         viewModel.saveTrafficLimit(mobileLimitInput, wifiLimitInput)
                     }
                 )
 
-                // 5. 底部操作区
-                BottomActionsSection(
+                // 6. 流量使用详情
+                TrafficDetailCard(
+                    trafficInfo = trafficInfo,
+                    mobileUsagePercent = mobileUsagePercent,
+                    wifiUsagePercent = wifiUsagePercent,
+                    mobileLimit = mobileLimitInput,
+                    wifiLimit = wifiLimitInput,
+                    selectedPeriod = selectedPeriod,
+                    onPeriodSelected = { selectedPeriod = it }
+                )
+
+                // 7. 底部危险区域
+                DangerZoneCard(
                     onForceDisconnect = { showForceDisconnectDialog = true },
                     onRestoreAll = { viewModel.restoreAll() }
                 )
@@ -155,7 +242,7 @@ fun AppControlScreen(
             title = { Text("确认强制断网") },
             text = { Text("将同时屏蔽 $appName 的移动数据和WiFi网络，该应用将无法联网。") },
             confirmButton = {
-                Button(
+                androidx.compose.material3.Button(
                     onClick = {
                         viewModel.forceDisconnect()
                         showForceDisconnectDialog = false
@@ -174,50 +261,167 @@ fun AppControlScreen(
             }
         )
     }
+
+    // 成功消息 Snackbar
+    message?.let { msg ->
+        LaunchedEffect(msg) {
+            kotlinx.coroutines.delay(2000)
+            viewModel.clearMessage()
+        }
+        androidx.compose.material3.Snackbar(
+            modifier = Modifier.padding(16.dp),
+            containerColor = TrafficGreen
+        ) {
+            Text(msg, color = Color.White)
+        }
+    }
+
+    // 错误消息 Snackbar
+    errorMessage?.let { err ->
+        LaunchedEffect(err) {
+            kotlinx.coroutines.delay(3000)
+            viewModel.clearError()
+        }
+        androidx.compose.material3.Snackbar(
+            modifier = Modifier.padding(16.dp),
+            containerColor = TrafficRed
+        ) {
+            Text(err, color = Color.White)
+        }
+    }
 }
 
 /**
- * 顶部标题栏
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun AppControlTopBar(
-    appName: String,
-    onBack: () -> Unit
-) {
-    TopAppBar(
-        title = {
-            Text(
-                text = appName,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1
-            )
-        },
-        navigationIcon = {
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "返回",
-                    tint = MaterialTheme.colorScheme.onSurface
-                )
-            }
-        },
-        colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
-    )
-}
-
-/**
- * 应用信息头部
+ * 应用信息卡片 - 顶部大卡片
  */
 @Composable
-private fun AppInfoHeader(
+private fun AppInfoCard(
     appName: String,
     icon: android.graphics.drawable.Drawable?,
-    packageName: String
+    packageName: String,
+    trafficInfo: com.netguardian.app.model.AppTrafficInfo?
 ) {
+    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(20.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 应用图标 64dp
+                if (icon != null) {
+                    androidx.compose.ui.viewinterop.AndroidView(
+                        factory = { context ->
+                            android.widget.ImageView(context).apply {
+                                setImageDrawable(icon)
+                                clipToOutline = true
+                                outlineProvider = android.view.ViewOutlineProvider.BOUNDS
+                            }
+                        },
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(RoundedCornerShape(14.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = appName.take(1),
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                Column {
+                    Text(
+                        text = appName,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = packageName,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            // 当前流量使用情况
+            if (trafficInfo != null) {
+                Spacer(modifier = Modifier.height(16.dp))
+                HorizontalDivider()
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    // 移动流量
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "今日移动",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = TrafficFormatter.formatMb(trafficInfo.totalMobile),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TrafficGreen
+                        )
+                    }
+
+                    // WiFi流量
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "今日WiFi",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = TrafficFormatter.formatMb(trafficInfo.totalWifi),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TrafficBlue
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 网络开关卡片 - 每个控制项独立卡片
+ */
+@Composable
+private fun NetworkSwitchCard(
+    title: String,
+    checked: Boolean,
+    enabled: Boolean,
+    statusText: String,
+    icon: ImageVector,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    val statusColor = if (checked) TrafficGreen else TrafficRed
+    val switchTrackColor = if (checked) TrafficGreen else MaterialTheme.colorScheme.surfaceVariant
+
     ElevatedCard(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
@@ -225,297 +429,58 @@ private fun AppInfoHeader(
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 应用图标
-            if (icon != null) {
-                androidx.compose.ui.viewinterop.AndroidView(
-                    factory = { context ->
-                        android.widget.ImageView(context).apply {
-                            setImageDrawable(icon)
-                            clipToOutline = true
-                            outlineProvider = android.view.ViewOutlineProvider.BOUNDS
-                        }
-                    },
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                )
-            } else {
-                Surface(
-                    modifier = Modifier.size(48.dp),
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = appName.take(1),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    }
-                }
-            }
+            // 左侧图标
+            Icon(
+                imageVector = icon,
+                contentDescription = title,
+                modifier = Modifier.size(28.dp),
+                tint = statusColor
+            )
 
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.width(14.dp))
 
-            Column {
+            // 中间标题+状态
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = appName,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
+                    text = title,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = packageName,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = statusText,
+                    fontSize = 13.sp,
+                    color = statusColor
                 )
             }
-        }
-    }
-}
 
-/**
- * 网络权限控制区域
- * 包含移动数据、WiFi、后台网络三个开关
- */
-@Composable
-private fun NetworkPermissionSection(
-    mobileAllowed: Boolean,
-    wifiAllowed: Boolean,
-    backgroundAllowed: Boolean,
-    isOperating: Boolean,
-    onMobileToggle: (Boolean) -> Unit,
-    onWifiToggle: (Boolean) -> Unit,
-    onBackgroundToggle: (Boolean) -> Unit
-) {
-    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Text(
-                text = "网络权限",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // 移动数据开关
-            PermissionSwitchRow(
-                label = "移动数据",
-                description = if (mobileAllowed) "已允许" else "已屏蔽",
-                checked = mobileAllowed,
-                enabled = !isOperating,
-                color = TrafficBlue,
-                onCheckedChange = onMobileToggle
-            )
-
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-            // WiFi开关
-            PermissionSwitchRow(
-                label = "WiFi网络",
-                description = if (wifiAllowed) "已允许" else "已屏蔽",
-                checked = wifiAllowed,
-                enabled = !isOperating,
-                color = TrafficGreen,
-                onCheckedChange = onWifiToggle
-            )
-
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-            // 后台网络开关
-            PermissionSwitchRow(
-                label = "后台网络",
-                description = if (backgroundAllowed) "已允许" else "已屏蔽",
-                checked = backgroundAllowed,
-                enabled = !isOperating,
-                color = MaterialTheme.colorScheme.tertiary,
-                onCheckedChange = onBackgroundToggle
-            )
-        }
-    }
-}
-
-/**
- * 权限开关行组件
- */
-@Composable
-private fun PermissionSwitchRow(
-    label: String,
-    description: String,
-    checked: Boolean,
-    enabled: Boolean,
-    color: Color,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // 状态指示点
-        Surface(
-            modifier = Modifier.size(8.dp),
-            shape = CircleShape,
-            color = if (checked) color else MaterialTheme.colorScheme.surfaceVariant
-        ) {}
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium
-            )
-            Text(
-                text = description,
-                style = MaterialTheme.typography.labelSmall,
-                color = if (checked) color else TrafficRed
-            )
-        }
-
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            enabled = enabled,
-            colors = SwitchDefaults.colors(
-                checkedTrackColor = color,
-                uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
-            )
-        )
-    }
-}
-
-/**
- * 当前流量使用区域
- * 显示当前周期的流量使用情况和进度条
- */
-@Composable
-private fun CurrentTrafficSection(
-    trafficInfo: com.netguardian.app.model.AppTrafficInfo?,
-    mobileUsagePercent: Float,
-    wifiUsagePercent: Float,
-    mobileLimit: String,
-    wifiLimit: String
-) {
-    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Text(
-                text = "当前周期流量",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-
-            if (trafficInfo != null) {
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // 移动网络使用
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "移动",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.width(40.dp),
-                        color = TrafficBlue
-                    )
-                    LinearProgressIndicator(
-                        progress = { mobileUsagePercent },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(6.dp),
-                        color = TrafficBlue,
-                        trackColor = TrafficBlue.copy(alpha = 0.15f),
-                        strokeCap = StrokeCap.Round
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "${TrafficFormatter.formatBytes(trafficInfo.totalMobile)}" +
-                                if (mobileLimit.isNotBlank() && mobileLimit.toLongOrNull() ?: 0 > 0)
-                                    " / ${mobileLimit}MB"
-                                else "",
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.width(100.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // WiFi使用
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "WiFi",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.width(40.dp),
-                        color = TrafficGreen
-                    )
-                    LinearProgressIndicator(
-                        progress = { wifiUsagePercent },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(6.dp),
-                        color = TrafficGreen,
-                        trackColor = TrafficGreen.copy(alpha = 0.15f),
-                        strokeCap = StrokeCap.Round
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "${TrafficFormatter.formatBytes(trafficInfo.totalWifi)}" +
-                                if (wifiLimit.isNotBlank() && wifiLimit.toLongOrNull() ?: 0 > 0)
-                                    " / ${wifiLimit}MB"
-                                else "",
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.width(100.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // 总流量
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "总计",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = TrafficFormatter.formatBytes(trafficInfo.totalBytes),
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            } else {
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = "暂无流量数据",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+            // 右侧Switch
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                enabled = enabled,
+                colors = SwitchDefaults.colors(
+                    checkedTrackColor = switchTrackColor,
+                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                    uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            }
+            )
         }
     }
 }
 
 /**
- * 流量限额设置区域
+ * 流量限额设置卡片
  */
 @Composable
-private fun TrafficLimitSection(
+private fun TrafficLimitCard(
     mobileLimitInput: String,
     wifiLimitInput: String,
+    dailyLimitInput: String,
     onMobileLimitChange: (String) -> Unit,
     onWifiLimitChange: (String) -> Unit,
+    onDailyLimitChange: (String) -> Unit,
     isOperating: Boolean,
     onSave: () -> Unit
 ) {
@@ -524,75 +489,252 @@ private fun TrafficLimitSection(
             modifier = Modifier.padding(16.dp)
         ) {
             Text(
-                text = "流量限额设置",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
+                text = "流量限额",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
             )
 
             Text(
-                text = "留空表示不限制。单位：MB",
-                style = MaterialTheme.typography.labelSmall,
+                text = "留空表示不限制",
+                fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // 移动流量限额输入
+            // 移动流量限额
             OutlinedTextField(
                 value = mobileLimitInput,
                 onValueChange = onMobileLimitChange,
-                label = { Text("移动流量限额 (MB)") },
+                label = { Text("移动流量限额") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                     keyboardType = KeyboardType.Number
                 ),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
+                trailingIcon = { Text("MB", fontSize = 13.sp) }
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // WiFi流量限额输入
+            // WiFi流量限额
             OutlinedTextField(
                 value = wifiLimitInput,
                 onValueChange = onWifiLimitChange,
-                label = { Text("WiFi流量限额 (MB)") },
+                label = { Text("WiFi流量限额") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                     keyboardType = KeyboardType.Number
                 ),
+                trailingIcon = { Text("MB", fontSize = 13.sp) }
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 每日限额
+            OutlinedTextField(
+                value = dailyLimitInput,
+                onValueChange = onDailyLimitChange,
+                label = { Text("每日限额") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(12.dp),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = KeyboardType.Number
+                ),
+                trailingIcon = { Text("MB", fontSize = 13.sp) }
             )
 
             Spacer(modifier = Modifier.height(12.dp))
 
             // 保存按钮
-            Button(
+            androidx.compose.material3.FilledTonalButton(
                 onClick = onSave,
                 enabled = !isOperating,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
             ) {
                 if (isOperating) {
                     CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        color = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(18.dp),
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
                         strokeWidth = 2.dp
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                 }
-                Text("保存限额设置")
+                Text("保存")
             }
         }
     }
 }
 
 /**
- * 底部操作区域
- * 包含强制断网和恢复所有权限按钮
+ * 流量使用详情卡片 - 含周期选择Tab和进度条
  */
 @Composable
-private fun BottomActionsSection(
+private fun TrafficDetailCard(
+    trafficInfo: com.netguardian.app.model.AppTrafficInfo?,
+    mobileUsagePercent: Float,
+    wifiUsagePercent: Float,
+    mobileLimit: String,
+    wifiLimit: String,
+    selectedPeriod: Int,
+    onPeriodSelected: (Int) -> Unit
+) {
+    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text(
+                text = "流量使用详情",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // 周期选择Tab
+            val tabs = listOf("日", "周", "月")
+            TabRow(
+                selectedTabIndex = selectedPeriod,
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                contentColor = MaterialTheme.colorScheme.primary
+            ) {
+                tabs.forEachIndexed { index, title ->
+                    Tab(
+                        selected = selectedPeriod == index,
+                        onClick = { onPeriodSelected(index) },
+                        text = {
+                            Text(
+                                text = title,
+                                fontWeight = if (selectedPeriod == index) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            if (trafficInfo != null) {
+                // 移动流量进度条
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "移动",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = TrafficGreen,
+                        modifier = Modifier.width(40.dp)
+                    )
+                    LinearProgressIndicator(
+                        progress = { mobileUsagePercent },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(8.dp),
+                        color = TrafficGreen,
+                        trackColor = TrafficGreen.copy(alpha = 0.12f),
+                        strokeCap = StrokeCap.Round
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = TrafficFormatter.formatBytes(trafficInfo.totalMobile) +
+                                if (mobileLimit.isNotBlank() && mobileLimit.toLongOrNull() ?: 0 > 0)
+                                    " / ${mobileLimit}MB"
+                                else "",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.width(110.dp),
+                        textAlign = TextAlign.End
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // WiFi流量进度条
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "WiFi",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = TrafficBlue,
+                        modifier = Modifier.width(40.dp)
+                    )
+                    LinearProgressIndicator(
+                        progress = { wifiUsagePercent },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(8.dp),
+                        color = TrafficBlue,
+                        trackColor = TrafficBlue.copy(alpha = 0.12f),
+                        strokeCap = StrokeCap.Round
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = TrafficFormatter.formatBytes(trafficInfo.totalWifi) +
+                                if (wifiLimit.isNotBlank() && wifiLimit.toLongOrNull() ?: 0 > 0)
+                                    " / ${wifiLimit}MB"
+                                else "",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.width(110.dp),
+                        textAlign = TextAlign.End
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // 总流量
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "总计",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = TrafficFormatter.formatBytes(trafficInfo.totalBytes),
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(60.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "暂无流量数据",
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 底部危险区域卡片
+ */
+@Composable
+private fun DangerZoneCard(
     onForceDisconnect: () -> Unit,
     onRestoreAll: () -> Unit
 ) {
@@ -601,39 +743,45 @@ private fun BottomActionsSection(
             modifier = Modifier.padding(16.dp)
         ) {
             Text(
-                text = "快捷操作",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
+                text = "危险操作",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = TrafficRed
             )
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // 恢复所有权限
+            // 强制断网 - 红色边框 OutlinedButton
             OutlinedButton(
-                onClick = onRestoreAll,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("恢复所有网络权限")
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // 强制断网按钮（红色危险按钮）
-            Button(
                 onClick = onForceDisconnect,
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = TrafficRed
+                shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(
+                    width = 1.5.dp,
+                    color = TrafficRed
                 ),
-                shape = RoundedCornerShape(12.dp)
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = TrafficRed
+                )
             ) {
                 Icon(
-                    imageVector = Icons.Default.Warning,
+                    imageVector = Icons.Default.Dangerous,
                     contentDescription = null,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("强制断网")
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 重置权限
+            TextButton(
+                onClick = onRestoreAll,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("重置权限")
             }
         }
     }

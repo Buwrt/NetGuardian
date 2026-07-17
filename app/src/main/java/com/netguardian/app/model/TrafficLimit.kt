@@ -20,6 +20,8 @@ data class TrafficLimit(
     val mobileLimitMb: Long? = null,
     /** WiFi流量限制（单位：MB），null表示不限制 */
     val wifiLimitMb: Long? = null,
+    /** 每日流量限额（单位：MB），null表示不限制 */
+    val dailyLimitMb: Long? = null,
     /** 是否为全局限制（应用到所有应用） */
     val isGlobal: Boolean = false
 ) {
@@ -30,6 +32,10 @@ data class TrafficLimit(
     /** 判断WiFi是否设置了限制 */
     val hasWifiLimit: Boolean
         get() = wifiLimitMb != null && wifiLimitMb > 0
+
+    /** 判断是否设置了每日限额 */
+    val hasDailyLimit: Boolean
+        get() = dailyLimitMb != null && dailyLimitMb > 0
 
     /**
      * 将MB转为字节数
