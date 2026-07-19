@@ -73,13 +73,13 @@ interface TrafficDao {
 
     /** 查询指定月份的所有流量记录（按日期聚合） */
     @Query("""
-        SELECT packageName, uid,
+        SELECT id, packageName, uid,
                SUM(mobileRx) as mobileRx, SUM(mobileTx) as mobileTx,
                SUM(wifiRx) as wifiRx, SUM(wifiTx) as wifiTx,
                date, MIN(timestamp) as timestamp
         FROM traffic_records
         WHERE date LIKE :monthPattern || '%'
-        GROUP BY packageName, uid, date
+        GROUP BY id, packageName, uid, date
         ORDER BY date DESC
     """)
     suspend fun getMonthlyAggregatedRecords(monthPattern: String): List<TrafficRecord>
