@@ -1,6 +1,7 @@
 package com.netguardian.app.core
 
 import android.content.Context
+import android.os.Build
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import android.util.Log
@@ -37,6 +38,9 @@ data class CarrierInfo(
  * 3. 提供运营商的标准化中文名称
  * 4. 通过StateFlow暴露运营商信息供UI层观察
  *
+ * 数据源优先级：SubscriptionManager > TelephonyManager
+ * 运营商识别优先级：MCC+MNC > 名称关键字匹配
+ *
  * 纯本地离线运行，不进行任何网络请求
  */
 class CarrierManager(private val context: Context) {
@@ -68,44 +72,143 @@ class CarrierManager(private val context: Context) {
 
     /**
      * 检测当前运营商信息
-     * 从TelephonyManager读取SIM卡信息并封装为CarrierInfo
+     * 优先使用 SubscriptionManager（Android标准SIM卡信息API，数据由系统telephony框架统一管理），
+     * 失败时回退到 TelephonyManager
      *
      * @return CarrierInfo 检测成功时返回运营商信息，失败返回null
      */
     fun detectCarrier(): CarrierInfo? {
-        val tm = telephonyManager ?: return null
-
         return try {
-            // 检查SIM卡是否就绪
-            if (tm.simState != TelephonyManager.SIM_STATE_READY) {
-                Log.d(TAG, "SIM卡未就绪，状态: ${tm.simState}")
-                return null
+            val sm = subscriptionManager
+            if (sm != null) {
+                // 优先使用 SubscriptionManager（最可靠）
+                val infoList = sm.activeSubscriptionInfoList
+                if (!infoList.isNullOrEmpty()) {
+                    val defaultSubId = try {
+                        sm.defaultSubscriptionId  // API 31+
+                    } catch (e: Exception) {
+                        infoList.firstOrNull()?.subscriptionId ?: return null
+                    }
+
+                    val info = infoList.firstOrNull { it.subscriptionId == defaultSubId }
+                        ?: infoList.firstOrNull()
+                        ?: return null
+
+                    val displayName = info.carrierName?.toString()?.trim() ?: ""
+                    val mcc = info.mccString?.trim() ?: ""
+                    val mnc = info.mncString?.trim() ?: ""
+                    val mccMnc = mcc + mnc
+
+                    val carrierInfo = CarrierInfo(
+                        carrierName = standardizeCarrierName(displayName, mccMnc),
+                        simOperator = mccMnc,
+                        networkType = getNetworkTypeName(getCurrentNetworkType()),
+                        signalStrength = -1,
+                        subscriptionId = info.subscriptionId,
+                        isDefault = true
+                    )
+                    _carrierInfo.value = carrierInfo
+                    Log.d(TAG, "运营商(SubMgr): ${carrierInfo.carrierName}, SIM: $mccMnc, 网络: ${carrierInfo.networkType}")
+                    return carrierInfo
+                }
             }
 
+            // Fallback: 使用 TelephonyManager
+            detectCarrierFallback()
+        } catch (e: SecurityException) {
+            Log.w(TAG, "无权限检测运营商: ${e.message}")
+            detectCarrierFallback()
+        } catch (e: Exception) {
+            Log.d(TAG, "SubscriptionManager方式失败: ${e.message}")
+            detectCarrierFallback()
+        }
+    }
+
+    /** TelephonyManager fallback */
+    private fun detectCarrierFallback(): CarrierInfo? {
+        val tm = telephonyManager ?: return null
+        return try {
+            if (tm.simState != TelephonyManager.SIM_STATE_READY) return null
             val operator = tm.simOperator?.trim() ?: ""
             val rawName = tm.simOperatorName?.trim() ?: ""
-            val carrierName = if (rawName.isNotEmpty()) rawName else "未知运营商"
-            val networkType = getNetworkTypeName(tm.dataNetworkType)
-            val subscriptionId = getDefaultSubscriptionId()
+            val name = if (rawName.isNotEmpty()) rawName else "未知运营商"
 
             val info = CarrierInfo(
-                carrierName = carrierName,
+                carrierName = standardizeCarrierName(name, operator),
                 simOperator = operator,
-                networkType = networkType,
+                networkType = getNetworkTypeName(getCurrentNetworkType()),
                 signalStrength = -1,
-                subscriptionId = subscriptionId,
+                subscriptionId = getDefaultSubscriptionId(),
                 isDefault = true
             )
-
             _carrierInfo.value = info
-            Log.d(TAG, "运营商: $carrierName (SIM: $operator), 网络: $networkType")
+            Log.d(TAG, "运营商(TM fallback): ${info.carrierName}, SIM: $operator")
             info
-        } catch (e: SecurityException) {
-            Log.w(TAG, "无READ_PHONE_STATE权限: ${e.message}")
-            null
         } catch (e: Exception) {
-            Log.d(TAG, "检测运营商失败: ${e.message}")
+            Log.d(TAG, "TelephonyManager fallback失败: ${e.message}")
             null
+        }
+    }
+
+    /**
+     * 获取当前网络类型
+     * 优先通过 SubscriptionManager 获取（API 30+），回退到 TelephonyManager
+     */
+    private fun getCurrentNetworkType(): Int {
+        return try {
+            // 优先通过 SubscriptionManager 获取
+            val sm = subscriptionManager ?: return TelephonyManager.NETWORK_TYPE_UNKNOWN
+            val infoList = sm.activeSubscriptionInfoList
+            val defaultSubId = try { sm.defaultSubscriptionId } catch (e: Exception) { -1 }
+            val info = infoList?.firstOrNull { it.subscriptionId == defaultSubId }
+
+            // API 30+ SubscriptionInfo 有 dataNetworkType
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && info != null) {
+                @Suppress("DEPRECATION")
+                return info.dataNetworkType
+            }
+
+            // Fallback
+            telephonyManager?.dataNetworkType ?: TelephonyManager.NETWORK_TYPE_UNKNOWN
+        } catch (e: Exception) {
+            telephonyManager?.dataNetworkType ?: TelephonyManager.NETWORK_TYPE_UNKNOWN
+        }
+    }
+
+    /**
+     * 标准化运营商名称
+     * 综合使用显示名称和MCC+MNC来准确识别运营商
+     * 优先级：MCC+MNC > 名称关键字匹配
+     */
+    private fun standardizeCarrierName(displayName: String, mccMnc: String): String {
+        // 优先用 MCC+MNC 判断（最准确，不会受ROM定制影响）
+        return when (mccMnc) {
+            "46000", "46002", "46004", "46007", "46008" -> "中国移动"
+            "46001", "46006", "46009" -> "中国联通"
+            "46003", "46005", "46011" -> "中国电信"
+            "46015" -> "中国广电"
+            else -> {
+                // MCC+MNC 无法识别时，通过名称关键字匹配
+                val name = displayName.trim()
+                when {
+                    name.isEmpty() -> "未知运营商"
+                    name.contains("移动", ignoreCase = true) ||
+                        name.contains("CMCC", ignoreCase = true) ||
+                        name.contains("China Mobile", ignoreCase = true) ||
+                        name.equals("中国移动", ignoreCase = true) -> "中国移动"
+                    name.contains("联通", ignoreCase = true) ||
+                        name.contains("CUCC", ignoreCase = true) ||
+                        name.contains("China Unicom", ignoreCase = true) ||
+                        name.contains("Unicom", ignoreCase = true) -> "中国联通"
+                    name.contains("电信", ignoreCase = true) ||
+                        name.contains("CTCC", ignoreCase = true) ||
+                        name.contains("China Telecom", ignoreCase = true) ||
+                        name.contains("Telecom", ignoreCase = true) -> "中国电信"
+                    name.contains("广电", ignoreCase = true) ||
+                        name.contains("CBN", ignoreCase = true) -> "中国广电"
+                    else -> name // 返回原始名称
+                }
+            }
         }
     }
 
@@ -149,41 +252,18 @@ class CarrierManager(private val context: Context) {
 
     /**
      * 获取运营商标准显示名称
-     * 将各种运营商名称变体统一为标准的中文名称
+     * 使用 standardizeCarrierName() 进行标准化
      *
      * @return 标准运营商名称："中国移动" / "中国联通" / "中国电信" / 原始名称 / "未知运营商"
      */
     fun getCarrierDisplayName(): String {
-        val name = telephonyManager?.simOperatorName?.trim() ?: return "未知运营商"
-        if (name.isEmpty()) return "未知运营商"
-        val mccMnc = telephonyManager?.simOperator?.trim() ?: ""
-
-        return when {
-            // 中文匹配
-            name.contains("移动") -> "中国移动"
-            name.contains("联通") -> "中国联通"
-            name.contains("电信") -> "中国电信"
-            name.contains("广电") -> "中国广电"
-            // 英文缩写匹配
-            name.equals("CMCC", ignoreCase = true) ||
-                name.equals("China Mobile", ignoreCase = true) ||
-                name.equals("中国移动", ignoreCase = true) -> "中国移动"
-            name.equals("CUCC", ignoreCase = true) ||
-                name.equals("China Unicom", ignoreCase = true) ||
-                name.equals("中国联通", ignoreCase = true) -> "中国联通"
-            name.equals("CTCC", ignoreCase = true) ||
-                name.equals("China Telecom", ignoreCase = true) ||
-                name.contains("电信", ignoreCase = true) -> "中国电信"
-            name.equals("CBN", ignoreCase = true) ||
-                name.contains("广电", ignoreCase = true) -> "中国广电"
-            // 通过MCC+MNC识别
-            else -> when (mccMnc) {
-                "46000", "46002", "46004", "46007", "46008" -> "中国移动"
-                "46001", "46006", "46009" -> "中国联通"
-                "46003", "46005", "46011" -> "中国电信"
-                "46015" -> "中国广电"
-                else -> name.ifEmpty { "未知运营商" }
-            }
+        val tm = telephonyManager ?: return "未知运营商"
+        return try {
+            val name = tm.simOperatorName?.trim() ?: ""
+            val mccMnc = tm.simOperator?.trim() ?: ""
+            standardizeCarrierName(name, mccMnc)
+        } catch (e: Exception) {
+            "未知运营商"
         }
     }
 
@@ -227,7 +307,7 @@ class CarrierManager(private val context: Context) {
             }
 
             for (info in activeList) {
-                val carrierName = info.carrierName?.toString() ?: "未知运营商"
+                val carrierName = info.carrierName?.toString()?.trim() ?: "未知运营商"
                 val simOperator = try {
                     info.mccString + info.mncString
                 } catch (e: Exception) {
@@ -236,7 +316,7 @@ class CarrierManager(private val context: Context) {
 
                 result.add(
                     CarrierInfo(
-                        carrierName = carrierName,
+                        carrierName = standardizeCarrierName(carrierName, simOperator),
                         simOperator = simOperator,
                         networkType = getNetworkTypeName(tm.dataNetworkType),
                         signalStrength = -1,

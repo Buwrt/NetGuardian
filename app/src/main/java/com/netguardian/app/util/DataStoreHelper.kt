@@ -57,6 +57,9 @@ object DataStoreHelper {
     /** 当前权限模式键 */
     private val KEY_PRIVILEGE_MODE = stringPreferencesKey(Constants.KEY_PRIVILEGE_MODE)
 
+    /** 首次启动标志键 */
+    private val KEY_FIRST_LAUNCH = booleanPreferencesKey(Constants.KEY_FIRST_RUN)
+
     // ==================== 主题模式 ====================
 
     /**
@@ -318,6 +321,22 @@ object DataStoreHelper {
     suspend fun setPrivilegeMode(context: Context, mode: String) {
         context.dataStore.edit { preferences ->
             preferences[KEY_PRIVILEGE_MODE] = mode
+        }
+    }
+
+    // ==================== 首次启动标志 ====================
+
+    /** 读取首次启动标志 */
+    fun isFirstLaunch(context: Context): Flow<Boolean> {
+        return context.dataStore.data.map { prefs ->
+            prefs[KEY_FIRST_LAUNCH] ?: true // 默认true
+        }
+    }
+
+    /** 设置首次启动标志 */
+    suspend fun setFirstLaunch(context: Context, isFirst: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_FIRST_LAUNCH] = isFirst
         }
     }
 

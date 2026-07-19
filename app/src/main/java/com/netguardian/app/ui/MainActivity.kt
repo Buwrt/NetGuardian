@@ -26,9 +26,11 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.netguardian.app.ui.navigation.AppNavigation
 import com.netguardian.app.ui.navigation.Routes
+import com.netguardian.app.ui.screen.PermissionSetupScreen
 import com.netguardian.app.ui.theme.NetGuardianTheme
 import com.netguardian.app.util.DataStoreHelper
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
 /**
  * NetGuardian 主 Activity
@@ -105,6 +107,32 @@ class MainActivity : ComponentActivity() {
 private fun MainContent() {
     val context = androidx.compose.ui.platform.LocalContext.current
     val navController = rememberNavController()
+
+    // ==================== 首次启动权限引导 ====================
+    var isFirstLaunch by remember { mutableStateOf(true) }
+    var showPermissionSetup by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        // 从 DataStore 读取首次启动标志
+        DataStoreHelper.isFirstLaunch(context).collect { first ->
+            isFirstLaunch = first
+            showPermissionSetup = first
+        }
+    }
+
+    // 首次启动显示权限引导页
+    if (showPermissionSetup) {
+        PermissionSetupScreen(
+            onAllGranted = {
+                showPermissionSetup = false
+                // 标记非首次启动
+                kotlinx.coroutines.GlobalScope.launch {
+                    DataStoreHelper.setFirstLaunch(context, false)
+                }
+            }
+        )
+        return
+    }
 
     // ==================== 主题状态管理 ====================
     var themeMode by remember { mutableStateOf("system") }
