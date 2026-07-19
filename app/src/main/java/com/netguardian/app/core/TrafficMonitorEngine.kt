@@ -1,13 +1,18 @@
 package com.netguardian.app.core
 
+import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.NetworkStats
+import android.net.NetworkStatsManager
 import android.net.TrafficStats
 import android.os.Build
+import android.os.Process
+import android.telephony.TelephonyManager
 import android.util.Log
 import com.netguardian.app.data.AppInfo
 import com.netguardian.app.model.AppTrafficInfo
@@ -46,6 +51,8 @@ class TrafficMonitorEngine(private val context: Context) {
 
     private val rootManager = RootManager.getInstance()
     private val shizukuManager = ShizukuManager.getInstance()
+    private val networkStatsManager: NetworkStatsManager? =
+        context.getSystemService(Context.NETWORK_STATS_SERVICE) as? NetworkStatsManager
 
     /** 运营商管理器 */
     private val carrierManager = CarrierManager(context)
@@ -246,23 +253,119 @@ class TrafficMonitorEngine(private val context: Context) {
 
     /**
      * 普通模式（无Root/Shizuku）下获取应用流量
-     * 使用Android TrafficStats API获取精确的Per-UID流量
-     * 通过ConnectivityManager获取当前网络类型，结合TrafficStats全局移动流量比例
-     * 区分每个应用的移动数据和WiFi流量
+     * 使用 NetworkStatsManager API 获取精确的Per-UID流量
+     * 需要 PACKAGE_USAGE_STATS 权限
      */
     private fun getPerAppTrafficNormal(apps: List<AppInfo>): List<AppTrafficInfo> {
         val trafficList = mutableListOf<AppTrafficInfo>()
+        val nsm = networkStatsManager
 
-        // 获取ConnectivityManager用于网络类型判断
-        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-        val isWifi = isWifiConnected(cm)
-        val isMobile = isMobileConnected(cm)
+        if (!hasUsageStatsPermission()) {
+            Log.w(TAG, "缺少 PACKAGE_USAGE_STATS 权限，尝试回退到 TrafficStats")
+            return getPerAppTrafficTrafficStatsFallback(apps)
+        }
 
-        // 获取全局流量数据用于比例分配（当WiFi和移动同时连接时使用）
-        val totalRx = TrafficStats.getTotalRxBytes().let { if (it == UNSUPPORTED.toLong()) 0L else it }
-        val totalTx = TrafficStats.getTotalTxBytes().let { if (it == UNSUPPORTED.toLong()) 0L else it }
-        val mobileTotalRx = TrafficStats.getMobileRxBytes().let { if (it == UNSUPPORTED.toLong()) 0L else it }
-        val mobileTotalTx = TrafficStats.getMobileTxBytes().let { if (it == UNSUPPORTED.toLong()) 0L else it }
+        if (nsm == null) {
+            Log.w(TAG, "NetworkStatsManager 不可用，回退到 TrafficStats")
+            return getPerAppTrafficTrafficStatsFallback(apps)
+        }
+
+        try {
+            // 查询今天（从午夜到当前时刻）的流量
+            val calendar = java.util.Calendar.getInstance().apply {
+                set(java.util.Calendar.HOUR_OF_DAY, 0)
+                set(java.util.Calendar.MINUTE, 0)
+                set(java.util.Calendar.SECOND, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
+            }
+            val startTime = calendar.timeInMillis
+            val endTime = System.currentTimeMillis()
+
+            // 查询移动数据统计
+            val mobileBuckets = nsm.querySummary(
+                TelephonyManager.DATA_USAGE_MOBILE,
+                null, // 不指定 SIM 卡
+                startTime,
+                endTime
+            )
+
+            val wifiBuckets = nsm.querySummary(
+                TelephonyManager.DATA_USAGE_WIFI,
+                null,
+                startTime,
+                endTime
+            )
+
+            // 遍历 bucket 提取每个 UID 的流量
+            val mobileTraffic = mutableMapOf<Int, Pair<Long, Long>>() // uid -> (rx, tx)
+            val wifiTraffic = mutableMapOf<Int, Pair<Long, Long>>()
+
+            val mobileBucket = NetworkStats.Bucket()
+            while (mobileBuckets.hasNextBucket()) {
+                mobileBuckets.getNextBucket(mobileBucket)
+                val uid = mobileBucket.uid
+                if (uid == Process.myUid()) continue // 跳过自身
+                val current = mobileTraffic.getOrDefault(uid, 0L to 0L)
+                mobileTraffic[uid] = (current.first + mobileBucket.rxBytes) to (current.second + mobileBucket.txBytes)
+            }
+            mobileBuckets.close()
+
+            val wifiBucket = NetworkStats.Bucket()
+            while (wifiBuckets.hasNextBucket()) {
+                wifiBuckets.getNextBucket(wifiBucket)
+                val uid = wifiBucket.uid
+                if (uid == Process.myUid()) continue
+                val current = wifiTraffic.getOrDefault(uid, 0L to 0L)
+                wifiTraffic[uid] = (current.first + wifiBucket.rxBytes) to (current.second + wifiBucket.txBytes)
+            }
+            wifiBuckets.close()
+
+            // 合并数据
+            val allUids = mobileTraffic.keys + wifiTraffic.keys
+            for (uid in allUids) {
+                val (mRx, mTx) = mobileTraffic.getOrDefault(uid, 0L to 0L)
+                val (wRx, wTx) = wifiTraffic.getOrDefault(uid, 0L to 0L)
+
+                if (mRx > 0 || mTx > 0 || wRx > 0 || wTx > 0) {
+                    // 找到对应的应用信息
+                    val app = apps.find { it.uid == uid }
+                    if (app != null) {
+                        trafficList.add(
+                            AppTrafficInfo(
+                                uid = uid,
+                                packageName = app.packageName,
+                                appName = app.appName,
+                                icon = app.icon,
+                                mobileRxBytes = mRx,
+                                mobileTxBytes = mTx,
+                                wifiRxBytes = wRx,
+                                wifiTxBytes = wTx,
+                                lastUpdated = System.currentTimeMillis()
+                            )
+                        )
+                    }
+                }
+            }
+
+            Log.d(TAG, "NetworkStatsManager 查询到 ${trafficList.size} 个有流量的应用 (移动: ${mobileTraffic.size}, WiFi: ${wifiTraffic.size})")
+
+        } catch (e: SecurityException) {
+            Log.w(TAG, "NetworkStatsManager 权限不足: ${e.message}")
+            return getPerAppTrafficTrafficStatsFallback(apps)
+        } catch (e: Exception) {
+            Log.e(TAG, "NetworkStatsManager 查询失败: ${e.message}", e)
+            return getPerAppTrafficTrafficStatsFallback(apps)
+        }
+
+        return trafficList.sortedByDescending { it.totalBytes }
+    }
+
+    /**
+     * TrafficStats 回退方案（精度较低）
+     * Android 10+ 中 TrafficStats 只能获取自身应用的流量
+     */
+    private fun getPerAppTrafficTrafficStatsFallback(apps: List<AppInfo>): List<AppTrafficInfo> {
+        val trafficList = mutableListOf<AppTrafficInfo>()
 
         for (app in apps) {
             try {
@@ -270,56 +373,52 @@ class TrafficMonitorEngine(private val context: Context) {
                 val rx = TrafficStats.getUidRxBytes(uid)
                 val tx = TrafficStats.getUidTxBytes(uid)
 
-                // TrafficStats返回-1表示不支持
-                if (rx == UNSUPPORTED.toLong() && tx == UNSUPPORTED.toLong()) {
-                    continue
-                }
+                if (rx == UNSUPPORTED.toLong() && tx == UNSUPPORTED.toLong()) continue
 
                 val validRx = if (rx == UNSUPPORTED.toLong()) 0L else rx
                 val validTx = if (tx == UNSUPPORTED.toLong()) 0L else tx
 
                 if (validRx > 0 || validTx > 0) {
-                    // 根据网络连接状态区分移动/WiFi流量
-                    val (mobileRx, mobileTx, wifiRx, wifiTx) = when {
-                        // 仅WiFi：全部归WiFi
-                        isWifi && !isMobile -> TrafficAllocation(0L, 0L, validRx, validTx)
-                        // 仅移动：全部归移动
-                        isMobile && !isWifi -> TrafficAllocation(validRx, validTx, 0L, 0L)
-                        // 两者同时连接或都未连接：按全局流量比例分配
-                        else -> {
-                            val globalTotal = totalRx + totalTx
-                            val globalMobile = mobileTotalRx + mobileTotalTx
-                            val mobileRatio = if (globalTotal >= TRAFFIC_SPLIT_MIN_TOTAL) {
-                                globalMobile.toDouble() / globalTotal.toDouble()
-                            } else {
-                                0.0
-                            }
-                            val mRx = (validRx * mobileRatio).toLong()
-                            val mTx = (validTx * mobileRatio).toLong()
-                            TrafficAllocation(mRx, mTx, validRx - mRx, validTx - mTx)
-                        }
-                    }
-
+                    // TrafficStats 无法区分移动和WiFi，简单归为WiFi
                     trafficList.add(
                         AppTrafficInfo(
                             uid = uid,
                             packageName = app.packageName,
                             appName = app.appName,
                             icon = app.icon,
-                            mobileRxBytes = mobileRx,
-                            mobileTxBytes = mobileTx,
-                            wifiRxBytes = wifiRx,
-                            wifiTxBytes = wifiTx,
+                            mobileRxBytes = 0L,
+                            mobileTxBytes = 0L,
+                            wifiRxBytes = validRx,
+                            wifiTxBytes = validTx,
                             lastUpdated = System.currentTimeMillis()
                         )
                     )
                 }
             } catch (e: Exception) {
-                Log.d(TAG, "普通模式读取 ${app.packageName} 流量失败: ${e.message}")
+                Log.d(TAG, "TrafficStats回退读取 ${app.packageName} 失败: ${e.message}")
             }
         }
 
         return trafficList.sortedByDescending { it.totalBytes }
+    }
+
+    /**
+     * 检查是否有 PACKAGE_USAGE_STATS 权限
+     * 这是使用 NetworkStatsManager 的前提条件
+     */
+    private fun hasUsageStatsPermission(): Boolean {
+        return try {
+            val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager
+            val mode = appOps?.unsafeCheckOpNoThrow(
+                "android:get_usage_stats",
+                Process.myUid(),
+                context.packageName
+            )
+            mode == AppOpsManager.MODE_ALLOWED
+        } catch (e: Exception) {
+            Log.d(TAG, "检查使用情况权限失败: ${e.message}")
+            false
+        }
     }
 
     // ==================== 实时网速监测 ====================
