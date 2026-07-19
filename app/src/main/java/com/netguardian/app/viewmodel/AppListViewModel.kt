@@ -131,14 +131,32 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
 
                 _totalAppCount.value = installedApps.size
 
-                // 第二步：获取每个应用的流量数据
-                val apps = withContext(Dispatchers.IO) {
+                // 第二步：获取有流量数据的应用
+                val trafficApps: List<AppTrafficInfo> = withContext(Dispatchers.IO) {
                     trafficEngine.getPerAppTraffic()
                 }
 
-                _allApps.value = apps
-                _activeAppCount.value = apps.size
-                _totalTraffic.value = apps.sumOf { it.totalBytes }
+                // 第三步：合并 - 所有已安装应用都应该显示
+                // 创建流量Map方便查找
+                val trafficMap = trafficApps.associateBy { it.packageName }
+
+                val allApps = installedApps.map { appInfo ->
+                    trafficMap[appInfo.packageName] ?: AppTrafficInfo(
+                        uid = appInfo.uid,
+                        packageName = appInfo.packageName,
+                        appName = appInfo.appName,
+                        icon = appInfo.icon,
+                        mobileRxBytes = 0L,
+                        mobileTxBytes = 0L,
+                        wifiRxBytes = 0L,
+                        wifiTxBytes = 0L,
+                        lastUpdated = System.currentTimeMillis()
+                    )
+                }
+
+                _allApps.value = allApps
+                _activeAppCount.value = trafficApps.size
+                _totalTraffic.value = allApps.sumOf { it.totalBytes }
                 _errorMessage.value = null
             } catch (e: Exception) {
                 _errorMessage.value = "加载应用列表失败: ${e.message}"
@@ -156,12 +174,33 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             _isRefreshing.value = true
             try {
-                val apps = withContext(Dispatchers.IO) {
+                val installedApps: List<AppInfo> = withContext(Dispatchers.IO) {
+                    trafficEngine.getInstalledApps(getApplication())
+                }
+                _totalAppCount.value = installedApps.size
+
+                val trafficApps: List<AppTrafficInfo> = withContext(Dispatchers.IO) {
                     trafficEngine.getPerAppTraffic()
                 }
-                _allApps.value = apps
-                _activeAppCount.value = apps.size
-                _totalTraffic.value = apps.sumOf { it.totalBytes }
+
+                val trafficMap = trafficApps.associateBy { it.packageName }
+                val allApps = installedApps.map { appInfo ->
+                    trafficMap[appInfo.packageName] ?: AppTrafficInfo(
+                        uid = appInfo.uid,
+                        packageName = appInfo.packageName,
+                        appName = appInfo.appName,
+                        icon = appInfo.icon,
+                        mobileRxBytes = 0L,
+                        mobileTxBytes = 0L,
+                        wifiRxBytes = 0L,
+                        wifiTxBytes = 0L,
+                        lastUpdated = System.currentTimeMillis()
+                    )
+                }
+
+                _allApps.value = allApps
+                _activeAppCount.value = trafficApps.size
+                _totalTraffic.value = allApps.sumOf { it.totalBytes }
                 _errorMessage.value = null
             } catch (e: Exception) {
                 _errorMessage.value = "刷新失败: ${e.message}"
@@ -180,11 +219,32 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
             while (true) {
                 kotlinx.coroutines.delay(30_000L)
                 try {
-                    val apps = withContext(Dispatchers.IO) {
+                    val installedApps: List<AppInfo> = withContext(Dispatchers.IO) {
+                        trafficEngine.getInstalledApps(getApplication())
+                    }
+                    _totalAppCount.value = installedApps.size
+
+                    val trafficApps: List<AppTrafficInfo> = withContext(Dispatchers.IO) {
                         trafficEngine.getPerAppTraffic()
                     }
-                    _allApps.value = apps
-                    _totalTraffic.value = apps.sumOf { it.totalBytes }
+
+                    val trafficMap = trafficApps.associateBy { it.packageName }
+                    val allApps = installedApps.map { appInfo ->
+                        trafficMap[appInfo.packageName] ?: AppTrafficInfo(
+                            uid = appInfo.uid,
+                            packageName = appInfo.packageName,
+                            appName = appInfo.appName,
+                            icon = appInfo.icon,
+                            mobileRxBytes = 0L,
+                            mobileTxBytes = 0L,
+                            wifiRxBytes = 0L,
+                            wifiTxBytes = 0L,
+                            lastUpdated = System.currentTimeMillis()
+                        )
+                    }
+
+                    _allApps.value = allApps
+                    _totalTraffic.value = allApps.sumOf { it.totalBytes }
                 } catch (_: Exception) {
                     // 后台刷新失败静默处理
                 }

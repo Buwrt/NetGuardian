@@ -265,7 +265,7 @@ fun AppListScreen(
                     }
 
                     // 无应用（可能未授权）
-                    displayApps.isEmpty() && searchQuery.isBlank() -> {
+                    displayApps.isEmpty() && searchQuery.isBlank() && totalAppCount == 0 -> {
                         EmptyPermissionState()
                     }
 
