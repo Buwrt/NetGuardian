@@ -283,7 +283,8 @@ class TrafficMonitorEngine(private val context: Context) {
 
             // 获取 NetworkStatsManager 类
             val nsmClass = Class.forName("android.net.NetworkStatsManager")
-            val bucketClass = Class.forName("android.net.NetworkStats$Bucket")
+            val bucketClassName = "android.net.NetworkStats\$Bucket"
+            val bucketClass = Class.forName(bucketClassName)
 
             // 获取 querySummary 方法
             val querySummaryMethod = nsmClass.getMethod(
