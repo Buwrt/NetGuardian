@@ -306,11 +306,13 @@ class CarrierManager(private val context: Context) {
                     ""
                 }
 
-                // 获取该 SIM 卡的网络类型
+                // 获取该 SIM 卡的网络类型（通过反射调用 createForSubscriptionId）
                 val subTm = try {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        // API 31+ 使用 createForSubscriptionId
-                        telephonyManager?.createForSubscriptionId(info.subscriptionId)
+                        val method = TelephonyManager::class.java.getMethod(
+                            "createForSubscriptionId", Int::class.javaPrimitiveType
+                        )
+                        method.invoke(telephonyManager, info.subscriptionId) as? TelephonyManager
                     } else {
                         telephonyManager
                     }
@@ -346,18 +348,24 @@ class CarrierManager(private val context: Context) {
 
     /**
      * 获取默认数据卡订阅ID
+     * 使用反射调用 SubscriptionManager.getDefaultDataSubscriptionId()
+     * （该方法在 compileSdk 34 中被标记为 deprecated，但运行时仍然可用）
      * @return 默认SIM卡的订阅ID
      */
     private fun getDefaultSubscriptionId(): Int {
         return try {
             val sm = subscriptionManager ?: return SubscriptionManager.INVALID_SUBSCRIPTION_ID
-            // API 24+ 使用标准方法获取默认数据订阅ID
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                @Suppress("DEPRECATION")
-                sm.defaultDataSubscriptionId
-            } else {
+            // 通过反射获取默认数据订阅ID（兼容 compileSdk 34+）
+            val method = SubscriptionManager::class.java.getMethod("getDefaultDataSubscriptionId")
+            method.invoke(sm) as? Int ?: SubscriptionManager.INVALID_SUBSCRIPTION_ID
+        } catch (e: NoSuchMethodException) {
+            // 方法不存在时 fallback
+            try {
+                val sm = subscriptionManager ?: return SubscriptionManager.INVALID_SUBSCRIPTION_ID
                 sm.activeSubscriptionInfoList?.firstOrNull()?.subscriptionId
                     ?: SubscriptionManager.INVALID_SUBSCRIPTION_ID
+            } catch (e2: Exception) {
+                SubscriptionManager.INVALID_SUBSCRIPTION_ID
             }
         } catch (e: Exception) {
             try {
