@@ -306,11 +306,25 @@ class CarrierManager(private val context: Context) {
                     ""
                 }
 
+                // 获取该 SIM 卡的网络类型
+                val subTm = try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        // API 31+ 使用 createForSubscriptionId
+                        telephonyManager?.createForSubscriptionId(info.subscriptionId)
+                    } else {
+                        telephonyManager
+                    }
+                } catch (e: Exception) {
+                    telephonyManager
+                }
+                @Suppress("DEPRECATION")
+                val networkType = subTm?.dataNetworkType ?: TelephonyManager.NETWORK_TYPE_UNKNOWN
+
                 result.add(
                     CarrierInfo(
                         carrierName = standardizeCarrierName(carrierName, simOperator),
                         simOperator = simOperator,
-                        networkType = getNetworkTypeName(tm.dataNetworkType),
+                        networkType = getNetworkTypeName(networkType),
                         signalStrength = -1,
                         subscriptionId = info.subscriptionId,
                         isDefault = info.subscriptionId == getDefaultSubscriptionId()
@@ -337,10 +351,22 @@ class CarrierManager(private val context: Context) {
     private fun getDefaultSubscriptionId(): Int {
         return try {
             val sm = subscriptionManager ?: return SubscriptionManager.INVALID_SUBSCRIPTION_ID
-            sm.activeSubscriptionInfoList?.firstOrNull()?.subscriptionId
-                ?: SubscriptionManager.INVALID_SUBSCRIPTION_ID
+            // API 24+ 使用标准方法获取默认数据订阅ID
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                @Suppress("DEPRECATION")
+                sm.defaultDataSubscriptionId
+            } else {
+                sm.activeSubscriptionInfoList?.firstOrNull()?.subscriptionId
+                    ?: SubscriptionManager.INVALID_SUBSCRIPTION_ID
+            }
         } catch (e: Exception) {
-            SubscriptionManager.INVALID_SUBSCRIPTION_ID
+            try {
+                val sm = subscriptionManager ?: return SubscriptionManager.INVALID_SUBSCRIPTION_ID
+                sm.activeSubscriptionInfoList?.firstOrNull()?.subscriptionId
+                    ?: SubscriptionManager.INVALID_SUBSCRIPTION_ID
+            } catch (e2: Exception) {
+                SubscriptionManager.INVALID_SUBSCRIPTION_ID
+            }
         }
     }
 }
