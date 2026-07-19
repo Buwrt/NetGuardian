@@ -202,10 +202,6 @@ class TrafficMonitorEngine(private val context: Context) {
             }
         }
 
-        if (!hasAnyData) {
-            Log.w(TAG, "TrafficStats fallback 未获取到任何数据（Android 10+ 只能获取自身应用流量），返回空列表")
-        }
-
         return trafficList.sortedByDescending { it.totalBytes }
     }
 
