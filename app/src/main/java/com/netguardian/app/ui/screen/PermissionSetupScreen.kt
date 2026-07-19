@@ -105,20 +105,11 @@ fun PermissionSetupScreen(onAllGranted: () -> Unit) {
                     // PACKAGE_USAGE_STATS 需要通过 AppOpsManager 检查
                     try {
                         val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as? android.app.AppOpsManager
-                        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                            appOps?.unsafeCheckOpNoThrow(
-                                "android:get_usage_stats",
-                                android.os.Process.myUid(),
-                                context.packageName
-                            )
-                        } else {
-                            @Suppress("DEPRECATION")
-                            appOps?.checkOpNoThrow(
-                                android.app.AppOpsManager.strOpToNum("android:get_usage_stats"),
-                                android.os.Process.myUid(),
-                                context.packageName
-                            )
-                        }
+                        val mode = appOps?.unsafeCheckOpNoThrow(
+                            "android:get_usage_stats",
+                            android.os.Process.myUid(),
+                            context.packageName
+                        )
                         p.copy(isGranted = mode == android.app.AppOpsManager.MODE_ALLOWED)
                     } catch (e: Exception) {
                         p.copy(isGranted = false)

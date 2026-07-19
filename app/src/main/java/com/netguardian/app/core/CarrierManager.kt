@@ -158,15 +158,9 @@ class CarrierManager(private val context: Context) {
             val defaultSubId = getDefaultSubscriptionId()
             val info = infoList?.firstOrNull { it.subscriptionId == defaultSubId }
 
-            // API 30+ SubscriptionInfo 有 dataNetworkType
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && info != null) {
-                @Suppress("DEPRECATION")
-                return info.dataNetworkType
-            }
-
-            // Fallback
+            // 直接通过 TelephonyManager 获取网络类型（最可靠）
             @Suppress("DEPRECATION")
-            telephonyManager?.dataNetworkType ?: TelephonyManager.NETWORK_TYPE_UNKNOWN
+            return telephonyManager?.dataNetworkType ?: TelephonyManager.NETWORK_TYPE_UNKNOWN
         } catch (e: Exception) {
             @Suppress("DEPRECATION")
             telephonyManager?.dataNetworkType ?: TelephonyManager.NETWORK_TYPE_UNKNOWN
