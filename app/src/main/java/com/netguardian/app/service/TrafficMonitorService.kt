@@ -107,6 +107,9 @@ class TrafficMonitorService : Service() {
     /** 上一次采样时间戳 */
     private var lastSpeedTimestamp: Long = 0L
 
+    /** 上一次清理旧数据的时间戳 */
+    private var lastCleanupTime: Long = 0L
+
     // ==================== 通知管理 ====================
 
     /** 是否显示监控通知（用户可配置） */
@@ -428,6 +431,16 @@ class TrafficMonitorService : Service() {
 
             // 检查流量限额（在采集完成后立即检查）
             checkTrafficLimits(appTrafficList)
+
+            // 每24小时清理一次超过3个月的旧数据
+            if (System.currentTimeMillis() - lastCleanupTime > 24 * 60 * 60 * 1000L) {
+                val threeMonthsAgo = System.currentTimeMillis() - 90L * 24 * 60 * 60 * 1000
+                val deletedCount = trafficDao.deleteOldRecordsByTimestamp(threeMonthsAgo)
+                lastCleanupTime = System.currentTimeMillis()
+                if (deletedCount > 0) {
+                    Log.d(TAG, "已清理 $deletedCount 条3个月前的旧数据")
+                }
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

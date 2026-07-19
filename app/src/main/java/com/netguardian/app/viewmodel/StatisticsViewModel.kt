@@ -11,6 +11,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 /**
  * 统计页面ViewModel
@@ -37,6 +41,18 @@ class StatisticsViewModel(application: Application) : AndroidViewModel(applicati
     /** 当前选择的时间维度 */
     private val _timePeriod = MutableStateFlow(TimePeriod.DAILY)
     val timePeriod: StateFlow<TimePeriod> = _timePeriod.asStateFlow()
+
+    // ==================== 月份选择 ====================
+
+    /** 当前选中的月份，格式 "yyyy-MM" */
+    private val _selectedMonth = MutableStateFlow(getCurrentMonth())
+    val selectedMonth: StateFlow<String> = _selectedMonth.asStateFlow()
+
+    /** 当前选中月份的可读格式 "yyyy年MM月" */
+    val selectedMonthDisplay: StateFlow<String> = _selectedMonth.map { month ->
+        val parts = month.split("-")
+        if (parts.size == 2) "${parts[0]}年${parts[1]}月" else month
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
     // ==================== 流量汇总数据 ====================
 
@@ -110,8 +126,14 @@ class StatisticsViewModel(application: Application) : AndroidViewModel(applicati
     private suspend fun loadTrafficSummary() {
         withContext(Dispatchers.IO) {
             try {
-                val (startDate, endDate) = getDateRange(_timePeriod.value)
-                val records = trafficDao.getRecordsByDateRange(startDate, endDate).first()
+                val records = if (_timePeriod.value == TimePeriod.MONTHLY) {
+                    // 月维度使用时间戳范围查询（支持跨月）
+                    val (startTs, endTs) = getMonthTimeRange(_selectedMonth.value)
+                    trafficDao.getRecordsByTimeRange(startTs, endTs)
+                } else {
+                    val (startDate, endDate) = getDateRange(_timePeriod.value)
+                    trafficDao.getRecordsByDateRange(startDate, endDate).first()
+                }
 
                 _totalRx.value = records.sumOf { it.mobileRx + it.wifiRx }
                 _totalTx.value = records.sumOf { it.mobileTx + it.wifiTx }
@@ -133,8 +155,14 @@ class StatisticsViewModel(application: Application) : AndroidViewModel(applicati
     private suspend fun loadChartData() {
         withContext(Dispatchers.IO) {
             try {
-                val (startDate, endDate) = getDateRange(_timePeriod.value)
-                val records = trafficDao.getRecordsByDateRange(startDate, endDate).first()
+                val records = if (_timePeriod.value == TimePeriod.MONTHLY) {
+                    // 月维度使用时间戳范围查询（支持跨月）
+                    val (startTs, endTs) = getMonthTimeRange(_selectedMonth.value)
+                    trafficDao.getRecordsByTimeRange(startTs, endTs)
+                } else {
+                    val (startDate, endDate) = getDateRange(_timePeriod.value)
+                    trafficDao.getRecordsByDateRange(startDate, endDate).first()
+                }
 
                 when (_timePeriod.value) {
                     TimePeriod.DAILY -> {
@@ -215,8 +243,14 @@ class StatisticsViewModel(application: Application) : AndroidViewModel(applicati
     private suspend fun loadHistoryRecords() {
         withContext(Dispatchers.IO) {
             try {
-                val (startDate, endDate) = getDateRange(_timePeriod.value)
-                val records = trafficDao.getRecordsByDateRange(startDate, endDate).first()
+                val records = if (_timePeriod.value == TimePeriod.MONTHLY) {
+                    // 月维度使用时间戳范围查询（支持跨月）
+                    val (startTs, endTs) = getMonthTimeRange(_selectedMonth.value)
+                    trafficDao.getRecordsByTimeRange(startTs, endTs)
+                } else {
+                    val (startDate, endDate) = getDateRange(_timePeriod.value)
+                    trafficDao.getRecordsByDateRange(startDate, endDate).first()
+                }
                 // 去重并按时间降序
                 _historyRecords.value = records
                     .distinctBy { "${it.packageName}_${it.date}" }
@@ -257,6 +291,71 @@ class StatisticsViewModel(application: Application) : AndroidViewModel(applicati
      */
     fun clearError() {
         _errorMessage.value = null
+    }
+
+    // ==================== 月份导航 ====================
+
+    /**
+     * 切换到上一个月
+     */
+    fun goToPreviousMonth() {
+        val calendar = Calendar.getInstance().apply {
+            time = SimpleDateFormat("yyyy-MM", Locale.getDefault()).parse(_selectedMonth.value)!!
+            add(Calendar.MONTH, -1)
+        }
+        _selectedMonth.value = SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(calendar.time)
+        loadData()
+    }
+
+    /**
+     * 切换到下一个月
+     */
+    fun goToNextMonth() {
+        val calendar = Calendar.getInstance().apply {
+            time = SimpleDateFormat("yyyy-MM", Locale.getDefault()).parse(_selectedMonth.value)!!
+            add(Calendar.MONTH, 1)
+        }
+        _selectedMonth.value = SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(calendar.time)
+        loadData()
+    }
+
+    /**
+     * 回到当前月份
+     */
+    fun goToCurrentMonth() {
+        _selectedMonth.value = getCurrentMonth()
+        loadData()
+    }
+
+    /**
+     * 根据月份字符串计算该月的时间戳范围
+     * @param month "yyyy-MM" 格式
+     * @return Pair<月初时间戳, 月末时间戳>
+     */
+    private fun getMonthTimeRange(month: String): Pair<Long, Long> {
+        val calendar = Calendar.getInstance().apply {
+            clear()
+            val parts = month.split("-")
+            set(Calendar.YEAR, parts[0].toInt())
+            set(Calendar.MONTH, parts[1].toInt() - 1) // Calendar.MONTH 是 0-based
+            set(Calendar.DAY_OF_MONTH, 1)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val startTime = calendar.timeInMillis
+        // 移动到下个月的第一天，再减1毫秒就是月末
+        calendar.add(Calendar.MONTH, 1)
+        val endTime = calendar.timeInMillis - 1
+        return Pair(startTime, endTime)
+    }
+
+    /**
+     * 获取当前月份字符串 "yyyy-MM"
+     */
+    private fun getCurrentMonth(): String {
+        return SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(Date())
     }
 
     /**

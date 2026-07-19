@@ -202,6 +202,10 @@ class TrafficMonitorEngine(private val context: Context) {
             }
         }
 
+        if (!hasAnyData) {
+            Log.w(TAG, "TrafficStats fallback 未获取到任何数据（Android 10+ 只能获取自身应用流量），返回空列表")
+        }
+
         return trafficList.sortedByDescending { it.totalBytes }
     }
 
@@ -272,7 +276,9 @@ class TrafficMonitorEngine(private val context: Context) {
         }
 
         try {
+            // 查询最近30天的数据（覆盖用户需要的跨月数据）
             val calendar = java.util.Calendar.getInstance().apply {
+                add(java.util.Calendar.DAY_OF_MONTH, -30)
                 set(java.util.Calendar.HOUR_OF_DAY, 0)
                 set(java.util.Calendar.MINUTE, 0)
                 set(java.util.Calendar.SECOND, 0)
@@ -380,7 +386,7 @@ class TrafficMonitorEngine(private val context: Context) {
             Log.w(TAG, "NetworkStatsManager 权限不足: ${e.message}")
             return getPerAppTrafficTrafficStatsFallback(apps)
         } catch (e: Exception) {
-            Log.e(TAG, "NetworkStatsManager 查询失败: ${e.message}", e)
+            Log.e(TAG, "NetworkStatsManager 查询失败: ${e.javaClass.simpleName}: ${e.message}", e)
             return getPerAppTrafficTrafficStatsFallback(apps)
         }
 
@@ -389,10 +395,13 @@ class TrafficMonitorEngine(private val context: Context) {
 
     /**
      * TrafficStats 回退方案（精度较低）
-     * Android 10+ 中 TrafficStats 只能获取自身应用的流量
+     * Android 10+ 中 TrafficStats 只能获取自身应用的流量，
+     * 所以此 fallback 在大多数情况下也会返回空列表。
+     * 让 ViewModel 的合并逻辑处理——显示所有应用为"暂无数据"。
      */
     private fun getPerAppTrafficTrafficStatsFallback(apps: List<AppInfo>): List<AppTrafficInfo> {
         val trafficList = mutableListOf<AppTrafficInfo>()
+        var hasAnyData = false
 
         for (app in apps) {
             try {
@@ -406,6 +415,7 @@ class TrafficMonitorEngine(private val context: Context) {
                 val validTx = if (tx == UNSUPPORTED.toLong()) 0L else tx
 
                 if (validRx > 0 || validTx > 0) {
+                    hasAnyData = true
                     // TrafficStats 无法区分移动和WiFi，简单归为WiFi
                     trafficList.add(
                         AppTrafficInfo(

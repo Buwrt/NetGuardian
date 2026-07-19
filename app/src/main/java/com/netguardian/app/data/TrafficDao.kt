@@ -67,6 +67,27 @@ interface TrafficDao {
     @Query("DELETE FROM traffic_records WHERE date < :date")
     suspend fun deleteOldRecords(date: String): Int
 
+    /** 查询指定时间戳范围内的所有流量记录 */
+    @Query("SELECT * FROM traffic_records WHERE timestamp >= :startTime AND timestamp <= :endTime ORDER BY timestamp DESC")
+    suspend fun getRecordsByTimeRange(startTime: Long, endTime: Long): List<TrafficRecord>
+
+    /** 查询指定月份的所有流量记录（按日期聚合） */
+    @Query("""
+        SELECT packageName,
+               SUM(mobileRx) as mobileRx, SUM(mobileTx) as mobileTx,
+               SUM(wifiRx) as wifiRx, SUM(wifiTx) as wifiTx,
+               date, MIN(timestamp) as timestamp
+        FROM traffic_records
+        WHERE date LIKE :monthPattern || '%'
+        GROUP BY packageName, date
+        ORDER BY date DESC
+    """)
+    suspend fun getMonthlyAggregatedRecords(monthPattern: String): List<TrafficRecord>
+
+    /** 删除超过3个月的历史数据（基于时间戳） */
+    @Query("DELETE FROM traffic_records WHERE timestamp < :threeMonthsAgo")
+    suspend fun deleteOldRecordsByTimestamp(threeMonthsAgo: Long): Int
+
     /**
      * 清空所有流量记录
      * 用于数据恢复前清理旧数据
