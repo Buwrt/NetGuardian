@@ -60,6 +60,9 @@ object DataStoreHelper {
     /** 首次启动标志键 */
     private val KEY_FIRST_LAUNCH = booleanPreferencesKey(Constants.KEY_FIRST_RUN)
 
+    /** 监控开关键 */
+    private val KEY_MONITOR_ENABLED = booleanPreferencesKey(Constants.KEY_MONITOR_ENABLED)
+
     // ==================== 主题模式 ====================
 
     /**
@@ -337,6 +340,27 @@ object DataStoreHelper {
     suspend fun setFirstLaunch(context: Context, isFirst: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[KEY_FIRST_LAUNCH] = isFirst
+        }
+    }
+
+    // ==================== 监控开关 ====================
+
+    /** 监控开关状态 Flow */
+    fun getMonitorEnabled(context: Context): Flow<Boolean> {
+        return context.dataStore.data.map { prefs ->
+            prefs[KEY_MONITOR_ENABLED] ?: true // 默认开启
+        }
+    }
+
+    /** 读取监控开关状态（一次性） */
+    suspend fun getMonitorEnabledOnce(context: Context): Boolean {
+        return context.dataStore.data.first()[KEY_MONITOR_ENABLED] ?: true
+    }
+
+    /** 设置监控开关状态 */
+    suspend fun setMonitorEnabled(context: Context, enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_MONITOR_ENABLED] = enabled
         }
     }
 

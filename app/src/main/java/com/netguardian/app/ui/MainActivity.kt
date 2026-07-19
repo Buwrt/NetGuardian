@@ -1,6 +1,7 @@
 package com.netguardian.app.ui
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -28,6 +29,8 @@ import com.netguardian.app.ui.navigation.AppNavigation
 import com.netguardian.app.ui.navigation.Routes
 import com.netguardian.app.ui.screen.PermissionSetupScreen
 import com.netguardian.app.ui.theme.NetGuardianTheme
+import com.netguardian.app.service.TrafficMonitorService
+import com.netguardian.app.util.Constants
 import com.netguardian.app.util.DataStoreHelper
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -132,6 +135,35 @@ private fun MainContent() {
             }
         )
         return
+    }
+
+    // ==================== 后台流量监控服务管理 ====================
+    var monitorEnabled by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        // 从 DataStore 读取监控开关状态
+        DataStoreHelper.getMonitorEnabled(context).collect { enabled ->
+            monitorEnabled = enabled
+        }
+    }
+
+    // 根据开关状态启停服务
+    LaunchedEffect(monitorEnabled) {
+        if (monitorEnabled) {
+            val intent = Intent(context, TrafficMonitorService::class.java).apply {
+                action = Constants.ACTION_START_MONITOR
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        } else {
+            val intent = Intent(context, TrafficMonitorService::class.java).apply {
+                action = Constants.ACTION_STOP_MONITOR
+            }
+            context.startService(intent)
+        }
     }
 
     // ==================== 主题状态管理 ====================

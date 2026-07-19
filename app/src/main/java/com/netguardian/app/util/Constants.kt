@@ -68,6 +68,9 @@ object Constants {
     /** 首次运行标记 */
     const val KEY_FIRST_RUN = "first_run"
 
+    /** 监控开关是否启用 */
+    const val KEY_MONITOR_ENABLED = "monitor_enabled"
+
     // ==================== 权限模式 ====================
 
     /** Root权限模式 */

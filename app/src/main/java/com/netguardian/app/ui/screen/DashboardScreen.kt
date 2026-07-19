@@ -94,6 +94,7 @@ import com.netguardian.app.ui.theme.TrafficGreen
 import com.netguardian.app.ui.theme.TrafficOrange
 import com.netguardian.app.ui.theme.TrafficRed
 import com.netguardian.app.util.Constants
+import com.netguardian.app.util.DataStoreHelper
 import com.netguardian.app.util.TrafficFormatter
 import com.netguardian.app.viewmodel.DashboardViewModel
 
@@ -167,6 +168,13 @@ fun DashboardScreen(
             } catch (_: Exception) {
                 // 加载失败时静默处理
             }
+        }
+    }
+
+    // ==================== 从 DataStore 同步监控开关初始状态到 ViewModel ====================
+    LaunchedEffect(Unit) {
+        DataStoreHelper.getMonitorEnabled(context).collect { enabled ->
+            viewModel.setMonitorRunning(enabled)
         }
     }
 
@@ -319,7 +327,13 @@ fun DashboardScreen(
                         PermissionModeCard(
                             mode = privilegeMode,
                             isMonitorRunning = isMonitorRunning,
-                            onMonitorToggle = { viewModel.setMonitorRunning(it) }
+                            onMonitorToggle = { enabled ->
+                                // 同步更新 ViewModel 状态和 DataStore（MainActivity 监听 DataStore 来启停服务）
+                                viewModel.setMonitorRunning(enabled)
+                                scope.launch {
+                                    DataStoreHelper.setMonitorEnabled(context, enabled)
+                                }
+                            }
                         )
                     }
 
