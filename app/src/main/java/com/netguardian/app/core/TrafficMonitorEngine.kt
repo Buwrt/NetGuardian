@@ -467,8 +467,8 @@ class TrafficMonitorEngine(private val context: Context) {
 
     /**
      * 获取已安装应用列表
-     * 优先通过 LAUNCHER intent 获取所有可启动的应用（最可靠，兼容OEM ROM限制）
-     * 若 LAUNCHER intent 方式未找到任何应用，则使用 getInstalledApplications 备用方式
+     * 使用 getInstalledApplications(MATCH_ALL) 获取所有应用
+     * Android 11+ 需要 QUERY_ALL_PACKAGES 权限才能获取完整列表
      *
      * @param context 上下文
      * @param includeSystemApps 是否包含系统应用，默认false
@@ -479,18 +479,35 @@ class TrafficMonitorEngine(private val context: Context) {
         val appList = mutableListOf<AppInfo>()
 
         try {
-            // 方式1：通过LAUNCHER intent获取所有可启动的应用（最可靠）
-            val launcherIntent = Intent(Intent.ACTION_MAIN, null).apply {
-                addCategory(Intent.CATEGORY_LAUNCHER)
+            // MATCH_ALL (0x00020000) 确保获取所有应用
+            val MATCH_ALL = 0x00020000
+            val applications = pm.getInstalledApplications(MATCH_ALL)
+            Log.d(TAG, "getInstalledApplications 返回 ${applications.size} 个应用")
+
+            // 获取有 LAUNCHER intent 的包名集合
+            val launcherPackages = try {
+                val launcherIntent = Intent(Intent.ACTION_MAIN, null).apply {
+                    addCategory(Intent.CATEGORY_LAUNCHER)
+                }
+                pm.queryIntentActivities(launcherIntent, 0)
+                    .map { it.activityInfo.packageName }
+                    .toSet()
+            } catch (e: Exception) {
+                Log.d(TAG, "queryIntentActivities 失败: ${e.message}")
+                emptySet()
             }
-            val resolveInfos = pm.queryIntentActivities(launcherIntent, 0)
 
-            for (resolveInfo in resolveInfos) {
+            for (appInfo in applications) {
                 try {
-                    val packageName = resolveInfo.activityInfo.packageName
-                    if (packageName == context.packageName) continue // 跳过自身
+                    val packageName = appInfo.packageName
+                    if (packageName == context.packageName) continue
 
-                    val appInfo = pm.getApplicationInfo(packageName, 0)
+                    val isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+
+                    if (!includeSystemApps && isSystemApp && packageName !in launcherPackages) {
+                        continue
+                    }
+
                     val appName = appInfo.loadLabel(pm).toString()
                     if (appName.isBlank()) continue
 
@@ -500,11 +517,11 @@ class TrafficMonitorEngine(private val context: Context) {
                         pm.getDefaultActivityIcon()
                     }
 
-                    val packageInfo = try {
+                    val versionName = try {
                         @Suppress("DEPRECATION")
-                        pm.getPackageInfo(packageName, 0)
+                        pm.getPackageInfo(packageName, 0).versionName ?: "未知"
                     } catch (e: Exception) {
-                        null
+                        "未知"
                     }
 
                     appList.add(
@@ -513,60 +530,20 @@ class TrafficMonitorEngine(private val context: Context) {
                             appName = appName,
                             uid = appInfo.uid,
                             icon = icon,
-                            isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0,
-                            versionName = packageInfo?.versionName ?: "未知",
+                            isSystemApp = isSystemApp,
+                            versionName = versionName,
                             targetSdk = appInfo.targetSdkVersion
                         )
                     )
                 } catch (e: Exception) {
-                    Log.d(TAG, "获取应用 ${resolveInfo.activityInfo.packageName} 信息失败: ${e.message}")
-                }
-            }
-
-            // 如果LAUNCHER intent方式没有找到任何应用，使用备用方式
-            if (appList.isEmpty()) {
-                Log.w(TAG, "LAUNCHER intent 未找到应用，使用 getInstalledApplications 备用方式")
-                val applications = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-                for (appInfo in applications) {
-                    try {
-                        if (appInfo.packageName == context.packageName) continue
-                        if (!includeSystemApps && (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0) continue
-
-                        val appName = appInfo.loadLabel(pm).toString()
-                        if (appName.isBlank()) continue
-
-                        val icon = try {
-                            appInfo.loadIcon(pm)
-                        } catch (e: Exception) {
-                            pm.getDefaultActivityIcon()
-                        }
-
-                        appList.add(
-                            AppInfo(
-                                packageName = appInfo.packageName,
-                                appName = appName,
-                                uid = appInfo.uid,
-                                icon = icon,
-                                isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0,
-                                versionName = try {
-                                    @Suppress("DEPRECATION")
-                                    pm.getPackageInfo(appInfo.packageName, 0).versionName ?: "未知"
-                                } catch (e: Exception) {
-                                    "未知"
-                                },
-                                targetSdk = appInfo.targetSdkVersion
-                            )
-                        )
-                    } catch (e: Exception) {
-                        Log.d(TAG, "备用方式获取应用 ${appInfo.packageName} 失败: ${e.message}")
-                    }
+                    Log.d(TAG, "获取应用 ${appInfo.packageName} 信息失败: ${e.message}")
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "获取已安装应用列表失败: ${e.message}")
+            Log.e(TAG, "获取已安装应用列表失败: ${e.message}", e)
         }
 
-        Log.d(TAG, "检测到 ${appList.size} 个应用")
+        Log.d(TAG, "最终检测到 ${appList.size} 个应用")
         return appList.sortedBy { it.appName.lowercase() }
     }
 
