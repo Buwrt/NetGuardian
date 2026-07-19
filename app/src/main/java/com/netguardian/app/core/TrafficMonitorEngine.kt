@@ -7,12 +7,9 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import android.net.NetworkStats
-import android.net.NetworkStatsManager
 import android.net.TrafficStats
 import android.os.Build
 import android.os.Process
-import android.telephony.TelephonyManager
 import android.util.Log
 import com.netguardian.app.data.AppInfo
 import com.netguardian.app.model.AppTrafficInfo
@@ -51,8 +48,12 @@ class TrafficMonitorEngine(private val context: Context) {
 
     private val rootManager = RootManager.getInstance()
     private val shizukuManager = ShizukuManager.getInstance()
-    private val networkStatsManager: NetworkStatsManager? =
-        context.getSystemService(Context.NETWORK_STATS_SERVICE) as? NetworkStatsManager
+    private val networkStatsManager: Any? =
+        try {
+            context.getSystemService("netstats")
+        } catch (e: Exception) {
+            null
+        }
 
     /** 运营商管理器 */
     private val carrierManager = CarrierManager(context)
@@ -261,7 +262,7 @@ class TrafficMonitorEngine(private val context: Context) {
         val nsm = networkStatsManager
 
         if (!hasUsageStatsPermission()) {
-            Log.w(TAG, "缺少 PACKAGE_USAGE_STATS 权限，尝试回退到 TrafficStats")
+            Log.w(TAG, "缺少 PACKAGE_USAGE_STATS 权限，回退到 TrafficStats")
             return getPerAppTrafficTrafficStatsFallback(apps)
         }
 
@@ -271,7 +272,6 @@ class TrafficMonitorEngine(private val context: Context) {
         }
 
         try {
-            // 查询今天（从午夜到当前时刻）的流量
             val calendar = java.util.Calendar.getInstance().apply {
                 set(java.util.Calendar.HOUR_OF_DAY, 0)
                 set(java.util.Calendar.MINUTE, 0)
@@ -281,44 +281,71 @@ class TrafficMonitorEngine(private val context: Context) {
             val startTime = calendar.timeInMillis
             val endTime = System.currentTimeMillis()
 
-            // 查询移动数据统计
-            val mobileBuckets = nsm.querySummary(
-                TelephonyManager.DATA_USAGE_MOBILE,
-                null, // 不指定 SIM 卡
-                startTime,
-                endTime
+            // 获取 NetworkStatsManager 类
+            val nsmClass = Class.forName("android.net.NetworkStatsManager")
+            val bucketClass = Class.forName("android.net.NetworkStats$Bucket")
+
+            // 获取 querySummary 方法
+            val querySummaryMethod = nsmClass.getMethod(
+                "querySummary",
+                Int::class.javaPrimitiveType,
+                String::class.java,
+                Long::class.javaPrimitiveType,
+                Long::class.javaPrimitiveType
             )
 
-            val wifiBuckets = nsm.querySummary(
-                TelephonyManager.DATA_USAGE_WIFI,
-                null,
-                startTime,
-                endTime
+            // 获取 DATA_USAGE_MOBILE 和 DATA_USAGE_WIFI 的值
+            val tmClass = Class.forName("android.telephony.TelephonyManager")
+            val DATA_USAGE_MOBILE = tmClass.getDeclaredField("DATA_USAGE_MOBILE").getInt(null)
+            val DATA_USAGE_WIFI = tmClass.getDeclaredField("DATA_USAGE_WIFI").getInt(null)
+
+            // 查询移动数据
+            val mobileResult = querySummaryMethod.invoke(
+                nsm, DATA_USAGE_MOBILE, null, startTime, endTime
+            )
+            // 查询 WiFi 数据
+            val wifiResult = querySummaryMethod.invoke(
+                nsm, DATA_USAGE_WIFI, null, startTime, endTime
             )
 
-            // 遍历 bucket 提取每个 UID 的流量
-            val mobileTraffic = mutableMapOf<Int, Pair<Long, Long>>() // uid -> (rx, tx)
+            // 遍历 bucket 的方法
+            val hasNextBucketMethod = mobileResult.javaClass.getMethod("hasNextBucket")
+            val getNextBucketMethod = mobileResult.javaClass.getMethod("getNextBucket", bucketClass)
+
+            // Bucket 的字段
+            val uidField = bucketClass.getDeclaredField("uid")
+            val rxBytesField = bucketClass.getDeclaredField("rxBytes")
+            val txBytesField = bucketClass.getDeclaredField("txBytes")
+            uidField.isAccessible = true
+            rxBytesField.isAccessible = true
+            txBytesField.isAccessible = true
+
+            val mobileTraffic = mutableMapOf<Int, Pair<Long, Long>>()
             val wifiTraffic = mutableMapOf<Int, Pair<Long, Long>>()
 
-            val mobileBucket = NetworkStats.Bucket()
-            while (mobileBuckets.hasNextBucket()) {
-                mobileBuckets.getNextBucket(mobileBucket)
-                val uid = mobileBucket.uid
-                if (uid == Process.myUid()) continue // 跳过自身
-                val current = mobileTraffic.getOrDefault(uid, 0L to 0L)
-                mobileTraffic[uid] = (current.first + mobileBucket.rxBytes) to (current.second + mobileBucket.txBytes)
-            }
-            mobileBuckets.close()
-
-            val wifiBucket = NetworkStats.Bucket()
-            while (wifiBuckets.hasNextBucket()) {
-                wifiBuckets.getNextBucket(wifiBucket)
-                val uid = wifiBucket.uid
+            // 遍历移动数据 buckets
+            val mobileBucket = bucketClass.getDeclaredConstructor().newInstance()
+            while (hasNextBucketMethod.invoke(mobileResult) as Boolean) {
+                getNextBucketMethod.invoke(mobileResult, mobileBucket)
+                val uid = uidField.getInt(mobileBucket)
                 if (uid == Process.myUid()) continue
-                val current = wifiTraffic.getOrDefault(uid, 0L to 0L)
-                wifiTraffic[uid] = (current.first + wifiBucket.rxBytes) to (current.second + wifiBucket.txBytes)
+                val rx = rxBytesField.getLong(mobileBucket)
+                val tx = txBytesField.getLong(mobileBucket)
+                val current = mobileTraffic.getOrDefault(uid, 0L to 0L)
+                mobileTraffic[uid] = (current.first + rx) to (current.second + tx)
             }
-            wifiBuckets.close()
+
+            // 遍历 WiFi buckets
+            val wifiBucket = bucketClass.getDeclaredConstructor().newInstance()
+            while (hasNextBucketMethod.invoke(wifiResult) as Boolean) {
+                getNextBucketMethod.invoke(wifiResult, wifiBucket)
+                val uid = uidField.getInt(wifiBucket)
+                if (uid == Process.myUid()) continue
+                val rx = rxBytesField.getLong(wifiBucket)
+                val tx = txBytesField.getLong(wifiBucket)
+                val current = wifiTraffic.getOrDefault(uid, 0L to 0L)
+                wifiTraffic[uid] = (current.first + rx) to (current.second + tx)
+            }
 
             // 合并数据
             val allUids = mobileTraffic.keys + wifiTraffic.keys
@@ -327,7 +354,6 @@ class TrafficMonitorEngine(private val context: Context) {
                 val (wRx, wTx) = wifiTraffic.getOrDefault(uid, 0L to 0L)
 
                 if (mRx > 0 || mTx > 0 || wRx > 0 || wTx > 0) {
-                    // 找到对应的应用信息
                     val app = apps.find { it.uid == uid }
                     if (app != null) {
                         trafficList.add(
@@ -347,7 +373,7 @@ class TrafficMonitorEngine(private val context: Context) {
                 }
             }
 
-            Log.d(TAG, "NetworkStatsManager 查询到 ${trafficList.size} 个有流量的应用 (移动: ${mobileTraffic.size}, WiFi: ${wifiTraffic.size})")
+            Log.d(TAG, "NetworkStatsManager 查询到 ${trafficList.size} 个有流量的应用")
 
         } catch (e: SecurityException) {
             Log.w(TAG, "NetworkStatsManager 权限不足: ${e.message}")
