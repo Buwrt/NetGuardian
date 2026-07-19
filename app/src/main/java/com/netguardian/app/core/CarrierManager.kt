@@ -84,11 +84,7 @@ class CarrierManager(private val context: Context) {
                 // 优先使用 SubscriptionManager（最可靠）
                 val infoList = sm.activeSubscriptionInfoList
                 if (!infoList.isNullOrEmpty()) {
-                    val defaultSubId = try {
-                        sm.defaultSubscriptionId  // API 31+
-                    } catch (e: Exception) {
-                        infoList.firstOrNull()?.subscriptionId ?: return null
-                    }
+                    val defaultSubId = getDefaultSubscriptionId()
 
                     val info = infoList.firstOrNull { it.subscriptionId == defaultSubId }
                         ?: infoList.firstOrNull()
@@ -159,7 +155,7 @@ class CarrierManager(private val context: Context) {
             // 优先通过 SubscriptionManager 获取
             val sm = subscriptionManager ?: return TelephonyManager.NETWORK_TYPE_UNKNOWN
             val infoList = sm.activeSubscriptionInfoList
-            val defaultSubId = try { sm.defaultSubscriptionId } catch (e: Exception) { -1 }
+            val defaultSubId = getDefaultSubscriptionId()
             val info = infoList?.firstOrNull { it.subscriptionId == defaultSubId }
 
             // API 30+ SubscriptionInfo 有 dataNetworkType
@@ -169,8 +165,10 @@ class CarrierManager(private val context: Context) {
             }
 
             // Fallback
+            @Suppress("DEPRECATION")
             telephonyManager?.dataNetworkType ?: TelephonyManager.NETWORK_TYPE_UNKNOWN
         } catch (e: Exception) {
+            @Suppress("DEPRECATION")
             telephonyManager?.dataNetworkType ?: TelephonyManager.NETWORK_TYPE_UNKNOWN
         }
     }

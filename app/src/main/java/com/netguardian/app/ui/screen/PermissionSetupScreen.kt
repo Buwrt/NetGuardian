@@ -40,6 +40,7 @@ data class PermissionItem(
     var isGranted: Boolean = false
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PermissionSetupScreen(onAllGranted: () -> Unit) {
     val context = LocalContext.current
@@ -104,11 +105,20 @@ fun PermissionSetupScreen(onAllGranted: () -> Unit) {
                     // PACKAGE_USAGE_STATS 需要通过 AppOpsManager 检查
                     try {
                         val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as? android.app.AppOpsManager
-                        val mode = appOps?.checkOpNoThrow(
-                            android.app.AppOpsManager.OP_GET_USAGE_STATS,
-                            android.os.Process.myUid(),
-                            context.packageName
-                        )
+                        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            appOps?.unsafeCheckOpNoThrow(
+                                "android:get_usage_stats",
+                                android.os.Process.myUid(),
+                                context.packageName
+                            )
+                        } else {
+                            @Suppress("DEPRECATION")
+                            appOps?.checkOpNoThrow(
+                                android.app.AppOpsManager.strOpToNum("android:get_usage_stats"),
+                                android.os.Process.myUid(),
+                                context.packageName
+                            )
+                        }
                         p.copy(isGranted = mode == android.app.AppOpsManager.MODE_ALLOWED)
                     } catch (e: Exception) {
                         p.copy(isGranted = false)
