@@ -159,12 +159,27 @@ fun DashboardScreen(
                 // 无权限或异常时静默处理
             }
 
-            // 加载 TOP5 应用流量数据
+            // 加载 TOP5 应用流量数据（从数据库读取聚合数据，避免使用累计值）
             try {
-                val engine = TrafficMonitorEngine(context)
-                topApps = engine.getPerAppTraffic()
+                val db = com.netguardian.app.data.AppDatabase.getInstance(context)
+                val dao = db.trafficDao()
+                val now = java.util.Calendar.getInstance()
+                val monthPattern = "${now.get(java.util.Calendar.YEAR)}-${String.format("%02d", now.get(java.util.Calendar.MONTH) + 1)}"
+                val records = dao.getMonthlyAggregatedRecords(monthPattern)
+                topApps = records
                     .sortedByDescending { it.totalBytes }
                     .take(5)
+                    .map { record ->
+                        com.netguardian.app.model.AppTrafficInfo(
+                            uid = record.uid,
+                            packageName = record.packageName,
+                            appName = record.packageName,
+                            mobileRxBytes = record.mobileRx,
+                            mobileTxBytes = record.mobileTx,
+                            wifiRxBytes = record.wifiRx,
+                            wifiTxBytes = record.wifiTx
+                        )
+                    }
             } catch (_: Exception) {
                 // 加载失败时静默处理
             }

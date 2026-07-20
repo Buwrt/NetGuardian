@@ -5,15 +5,15 @@ import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.netguardian.app.core.NetworkControlEngine
-import com.netguardian.app.core.TrafficMonitorEngine
 import com.netguardian.app.data.AppDatabase
 import com.netguardian.app.model.AppTrafficInfo
+import com.netguardian.app.model.TrafficRecord
 import com.netguardian.app.util.Constants
 import com.netguardian.app.util.DataStoreHelper
 import com.netguardian.app.util.TrafficFormatter
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import java.util.Calendar
 
 /**
  * 流量限额超限检测Worker
@@ -49,7 +49,6 @@ class LimitExceedWorker(
             // 初始化组件
             val database = AppDatabase.getInstance(applicationContext)
             val trafficDao = database.trafficDao()
-            val trafficMonitorEngine = TrafficMonitorEngine(applicationContext)
 
             // 读取用户设置
             val limitReminder = DataStoreHelper.getLimitReminder(applicationContext)
@@ -71,12 +70,29 @@ class LimitExceedWorker(
                 return@withContext Result.success()
             }
 
-            // 采集当前所有应用的实时流量数据
-            val appTrafficList = trafficMonitorEngine.getPerAppTraffic()
-            val trafficMap = appTrafficList.associateBy { it.packageName }
+            // 从数据库查询当前月份的聚合流量数据（替代实时采集）
+            val now = Calendar.getInstance()
+            val monthPattern = "${now.get(Calendar.YEAR)}-${String.format("%02d", now.get(Calendar.MONTH) + 1)}"
+            val monthRecords = trafficDao.getMonthlyAggregatedRecords(monthPattern)
+
+            // 构建包名 -> AppTrafficInfo 的映射
+            val trafficMap = monthRecords.associate { record ->
+                record.packageName to AppTrafficInfo(
+                    uid = record.uid,
+                    packageName = record.packageName,
+                    appName = record.packageName,
+                    mobileRxBytes = record.mobileRx,
+                    mobileTxBytes = record.mobileTx,
+                    wifiRxBytes = record.wifiRx,
+                    wifiTxBytes = record.wifiTx
+                )
+            }
+
+            // 计算全局总流量
+            val globalTotalBytes = monthRecords.sumOf { it.totalBytes }
 
             // 检查全局限额
-            checkGlobalLimit(globalLimit, appTrafficList, limitReminder)
+            checkGlobalLimit(globalLimit, globalTotalBytes, limitReminder)
 
             // 检查各应用限额
             var exceededCount = 0
@@ -105,21 +121,15 @@ class LimitExceedWorker(
      * 检查全局限额是否超限
      *
      * @param globalLimit 全局流量限制配置
-     * @param appTrafficList 所有应用的流量列表
+     * @param globalTotalBytes 所有应用的总流量（字节）
      * @param limitReminder 是否发送提醒通知
      */
     private fun checkGlobalLimit(
         globalLimit: com.netguardian.app.model.TrafficLimit?,
-        appTrafficList: List<AppTrafficInfo>,
+        globalTotalBytes: Long,
         limitReminder: Boolean
     ) {
         if (globalLimit == null) return
-
-        // 计算全局总流量
-        var globalTotalBytes = 0L
-        for (app in appTrafficList) {
-            globalTotalBytes += app.totalBytes
-        }
 
         // 检查移动网络全局限额
         if (globalLimit.hasMobileLimit) {

@@ -110,6 +110,14 @@ class TrafficMonitorService : Service() {
     /** 上一次清理旧数据的时间戳 */
     private var lastCleanupTime: Long = 0L
 
+    // ==================== 差值计算用的上次采样数据 ====================
+
+    /** 每个UID的上次采样累计值：uid -> (rx, tx) */
+    private val lastUidTraffic = mutableMapOf<Int, Pair<Long, Long>>()
+
+    /** 上次流量采集时间戳 */
+    private var lastCollectionTimestamp: Long = 0L
+
     // ==================== 通知管理 ====================
 
     /** 是否显示监控通知（用户可配置） */
@@ -397,57 +405,203 @@ class TrafficMonitorService : Service() {
     }
 
     /**
-     * 执行一次流量采集并保存到数据库
-     * 获取所有应用的流量信息，生成TrafficRecord并存入Room
+     * 执行一次流量采集并保存到数据库（差值计算版）
+     *
+     * /proc/uid_stat/{uid}/tcp_rcv 和 tcp_snd 是自设备开机以来的累计值，
+     * 不会按天重置。本方法通过差值计算得到真实的增量流量：
+     * - 每次采集时记录每个 UID 的当前累计值
+     * - 下次采集时用当前值减去上次值得到增量
+     * - 增量值按日期存入 Room 数据库
+     * - 如果增量异常（负值或超过1GB），视为计数器被重置，跳过该次记录
      */
     private suspend fun collectAndSaveTrafficData() {
         try {
-            // 获取所有应用的流量信息
-            val appTrafficList = trafficMonitorEngine.getPerAppTraffic()
+            val apps = trafficMonitorEngine.getInstalledApps(applicationContext)
+            val mode = kotlinx.coroutines.runBlocking {
+                com.netguardian.app.util.DataStoreHelper.getPrivilegeModeOnce(applicationContext)
+            }
+
+            // 获取当前所有UID的流量累计值
+            val currentTraffic: Map<Int, Pair<Long, Long>> = when (mode) {
+                Constants.MODE_ROOT -> {
+                    val rootManager = com.netguardian.app.core.RootManager.getInstance()
+                    rootManager.getAllUidTraffic()
+                }
+                Constants.MODE_SHIZUKU -> {
+                    val shizukuManager = com.netguardian.app.core.ShizukuManager.getInstance()
+                    // Shizuku模式：逐个读取已安装应用的流量
+                    val map = mutableMapOf<Int, Pair<Long, Long>>()
+                    for (app in apps) {
+                        try {
+                            val (rx, tx) = shizukuManager.getUidTrafficShizuku(app.uid)
+                            if (rx > 0 || tx > 0) {
+                                map[app.uid] = Pair(rx, tx)
+                            }
+                        } catch (e: Exception) {
+                            // 跳过读取失败的应用
+                        }
+                    }
+                    map
+                }
+                else -> {
+                    // 普通模式：使用 TrafficStats API（也是累计值，同样需要差值计算）
+                    val map = mutableMapOf<Int, Pair<Long, Long>>()
+                    for (app in apps) {
+                        try {
+                            val rx = android.net.TrafficStats.getUidRxBytes(app.uid)
+                            val tx = android.net.TrafficStats.getUidTxBytes(app.uid)
+                            if (rx != -1L && tx != -1L && (rx > 0 || tx > 0)) {
+                                map[app.uid] = Pair(rx, tx)
+                            }
+                        } catch (e: Exception) {
+                            // 跳过
+                        }
+                    }
+                    map
+                }
+            }
+
+            if (currentTraffic.isEmpty() && mode != Constants.MODE_NONE) {
+                Log.w(TAG, "Root/Shizuku模式未获取到流量数据")
+                return
+            }
+
+            val currentTime = System.currentTimeMillis()
             val todayDate = TrafficFormatter.getTodayDate()
             var savedCount = 0
 
-            for (appTraffic in appTrafficList) {
-                // 跳过流量极小的应用（过滤噪声）
-                if (appTraffic.totalBytes < Constants.MIN_TRAFFIC_THRESHOLD_BYTES) continue
+            // 获取当前网络类型（用于区分移动/WiFi）
+            val cm = getSystemService(CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+            val wifiConnected = isWifiConnected(cm)
+            val mobileConnected = isMobileConnected(cm)
 
-                // 构建流量记录实体
-                val record = TrafficRecord(
-                    uid = appTraffic.uid,
-                    packageName = appTraffic.packageName,
-                    mobileRx = appTraffic.mobileRxBytes,
-                    mobileTx = appTraffic.mobileTxBytes,
-                    wifiRx = appTraffic.wifiRxBytes,
-                    wifiTx = appTraffic.wifiTxBytes,
-                    date = todayDate,
-                    timestamp = System.currentTimeMillis()
-                )
+            for ((uid, currentRxTx) in currentTraffic) {
+                val currentRx = currentRxTx.first
+                val currentTx = currentRxTx.second
 
-                // 存入数据库
-                trafficDao.insertRecord(record)
-                savedCount++
+                val lastRxTx = lastUidTraffic[uid]
+
+                if (lastRxTx != null) {
+                    // 计算增量
+                    val deltaRx = currentRx - lastRxTx.first
+                    val deltaTx = currentTx - lastRxTx.second
+
+                    // 如果增量异常（负值或超过1GB单次），视为计数器被重置
+                    if (deltaRx < 0 || deltaTx < 0 || deltaRx > 1024L * 1024L * 1024L || deltaTx > 1024L * 1024L * 1024L) {
+                        // 计数器被重置，用当前值作为新的基准，不记录
+                        lastUidTraffic[uid] = Pair(currentRx, currentTx)
+                        Log.w(TAG, "UID $uid 计数器异常重置（deltaRx=$deltaRx, deltaTx=$deltaTx），更新基准值")
+                        continue
+                    }
+
+                    if (deltaRx > 0 || deltaTx > 0) {
+                        // 根据当前网络类型分配移动/WiFi
+                        var mobileRx = 0L
+                        var mobileTx = 0L
+                        var wifiRx = 0L
+                        var wifiTx = 0L
+
+                        when {
+                            wifiConnected && !mobileConnected -> {
+                                wifiRx = deltaRx; wifiTx = deltaTx
+                            }
+                            mobileConnected && !wifiConnected -> {
+                                mobileRx = deltaRx; mobileTx = deltaTx
+                            }
+                            else -> {
+                                // 两者同时连接或都未连接，按比例分配或全归移动
+                                mobileRx = deltaRx; mobileTx = deltaTx
+                            }
+                        }
+
+                        // 查找对应的应用包名
+                        val app = apps.find { it.uid == uid }
+                        if (app != null) {
+                            val record = TrafficRecord(
+                                uid = uid,
+                                packageName = app.packageName,
+                                mobileRx = mobileRx,
+                                mobileTx = mobileTx,
+                                wifiRx = wifiRx,
+                                wifiTx = wifiTx,
+                                date = todayDate,
+                                timestamp = currentTime
+                            )
+                            trafficDao.insertRecord(record)
+                            savedCount++
+                        }
+                    }
+                }
+
+                // 更新上次采样值（无论是否记录增量，都要更新基准）
+                lastUidTraffic[uid] = Pair(currentRx, currentTx)
             }
+
+            lastCollectionTimestamp = currentTime
 
             if (savedCount > 0) {
-                Log.d(TAG, "流量采集完成，保存 $savedCount 条记录")
+                Log.d(TAG, "流量采集完成（差值计算），保存 $savedCount 条增量记录")
             }
 
-            // 检查流量限额（在采集完成后立即检查）
-            checkTrafficLimits(appTrafficList)
+            // 采集后检查流量限额（从数据库读取聚合数据）
+            checkTrafficLimitsFromDb(apps)
 
             // 每24小时清理一次超过3个月的旧数据
-            if (System.currentTimeMillis() - lastCleanupTime > 24 * 60 * 60 * 1000L) {
-                val threeMonthsAgo = System.currentTimeMillis() - 90L * 24 * 60 * 60 * 1000
-                val deletedCount = trafficDao.deleteOldRecordsByTimestamp(threeMonthsAgo)
-                lastCleanupTime = System.currentTimeMillis()
-                if (deletedCount > 0) {
-                    Log.d(TAG, "已清理 $deletedCount 条3个月前的旧数据")
-                }
-            }
+            cleanupOldData()
+
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "流量采集异常: ${e.message}", e)
+        }
+    }
+
+    /**
+     * 清理超过3个月的旧数据
+     * 每24小时执行一次
+     */
+    private suspend fun cleanupOldData() {
+        if (System.currentTimeMillis() - lastCleanupTime > 24 * 60 * 60 * 1000L) {
+            val threeMonthsAgo = System.currentTimeMillis() - 90L * 24 * 60 * 60 * 1000
+            val deletedCount = trafficDao.deleteOldRecordsByTimestamp(threeMonthsAgo)
+            lastCleanupTime = System.currentTimeMillis()
+            if (deletedCount > 0) {
+                Log.d(TAG, "已清理 $deletedCount 条3个月前的旧数据")
+            }
+        }
+    }
+
+    /** 判断WiFi是否连接 */
+    private fun isWifiConnected(cm: android.net.ConnectivityManager?): Boolean {
+        if (cm == null) return false
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val network = cm.activeNetwork ?: return false
+                val caps = cm.getNetworkCapabilities(network) ?: return false
+                caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)
+            } else {
+                @Suppress("DEPRECATION")
+                cm.activeNetworkInfo?.type == android.net.ConnectivityManager.TYPE_WIFI
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /** 判断移动数据是否连接 */
+    private fun isMobileConnected(cm: android.net.ConnectivityManager?): Boolean {
+        if (cm == null) return false
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val network = cm.activeNetwork ?: return false
+                val caps = cm.getNetworkCapabilities(network) ?: return false
+                caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR)
+            } else {
+                @Suppress("DEPRECATION")
+                cm.activeNetworkInfo?.type == android.net.ConnectivityManager.TYPE_MOBILE
+            }
+        } catch (e: Exception) {
+            false
         }
     }
 
@@ -486,12 +640,12 @@ class TrafficMonitorService : Service() {
     // ==================== 限额检测 ====================
 
     /**
-     * 检查所有已设置限额的应用是否超限
-     * 对比当前流量与流量限制，超限时发送通知或自动断网
+     * 从数据库读取当前月份的聚合流量数据，检查限额是否超限
+     * 替代原来的 checkTrafficLimits()，不再依赖实时累计值
      *
-     * @param appTrafficList 当前各应用的流量信息列表
+     * @param apps 已安装应用列表（用于包名查找）
      */
-    private suspend fun checkTrafficLimits(appTrafficList: List<com.netguardian.app.model.AppTrafficInfo>) {
+    private suspend fun checkTrafficLimitsFromDb(apps: List<com.netguardian.app.data.AppInfo>) {
         try {
             // 获取所有设置了限额的应用（包括全局限额）
             val appSpecificLimits = trafficDao.getAppSpecificLimits()
@@ -509,32 +663,45 @@ class TrafficMonitorService : Service() {
                 return // 提醒和自动断网都关闭了，无需检查
             }
 
-            // 构建包名->流量信息的映射，方便快速查找
-            val trafficMap = appTrafficList.associateBy { it.packageName }
+            // 从数据库查询当前月份的聚合流量（按包名聚合）
+            val now = java.util.Calendar.getInstance()
+            val monthPattern = "${now.get(java.util.Calendar.YEAR)}-${String.format("%02d", now.get(java.util.Calendar.MONTH) + 1)}"
+            val monthRecords = trafficDao.getMonthlyAggregatedRecords(monthPattern)
+
+            // 构建包名->聚合流量的映射
+            val trafficMap = monthRecords.associate { record ->
+                record.packageName to com.netguardian.app.model.AppTrafficInfo(
+                    uid = record.uid,
+                    packageName = record.packageName,
+                    appName = apps.find { it.packageName == record.packageName }?.appName ?: record.packageName,
+                    mobileRxBytes = record.mobileRx,
+                    mobileTxBytes = record.mobileTx,
+                    wifiRxBytes = record.wifiRx,
+                    wifiTxBytes = record.wifiTx
+                )
+            }
 
             // 计算全局总流量（用于全局限额检查）
             var globalTotalBytes = 0L
-            for (app in appTrafficList) {
-                globalTotalBytes += app.totalBytes
+            for (record in monthRecords) {
+                globalTotalBytes += record.totalBytes
             }
 
             // 检查全局限额
-            if (globalLimit != null) {
-                if (globalLimit.hasMobileLimit) {
-                    val limitBytes = globalLimit.mbToBytes(globalLimit.mobileLimitMb!!)
-                    if (globalTotalBytes > limitBytes) {
-                        Log.w(TAG, "全局流量超限！已用 ${TrafficFormatter.formatBytes(globalTotalBytes)}，限额 ${TrafficFormatter.formatBytes(limitBytes)}")
-                        if (limitReminder) {
-                            TrafficMonitorNotification.showLimitExceedNotification(
-                                context = applicationContext,
-                                appName = "全部应用",
-                                packageName = "__global__",
-                                usedBytes = globalTotalBytes,
-                                limitBytes = limitBytes,
-                                networkType = "total",
-                                notificationId = 0
-                            )
-                        }
+            if (globalLimit != null && globalLimit.hasMobileLimit) {
+                val limitBytes = globalLimit.mbToBytes(globalLimit.mobileLimitMb!!)
+                if (globalTotalBytes > limitBytes) {
+                    Log.w(TAG, "全局流量超限！已用 ${TrafficFormatter.formatBytes(globalTotalBytes)}，限额 ${TrafficFormatter.formatBytes(limitBytes)}")
+                    if (limitReminder) {
+                        TrafficMonitorNotification.showLimitExceedNotification(
+                            context = applicationContext,
+                            appName = "全部应用",
+                            packageName = "__global__",
+                            usedBytes = globalTotalBytes,
+                            limitBytes = limitBytes,
+                            networkType = "total",
+                            notificationId = 0
+                        )
                     }
                 }
             }
@@ -589,7 +756,6 @@ class TrafficMonitorService : Service() {
                     if (autoDisconnect) {
                         val mode = DataStoreHelper.getPrivilegeMode(applicationContext)
                         if (mode == Constants.MODE_ROOT) {
-                            // 通过iptables断开该应用网络
                             autoDisconnectApp(limit.packageName, appTraffic.uid, networkType)
                         } else {
                             Log.w(TAG, "自动断网需要Root权限，当前模式: $mode")

@@ -52,6 +52,14 @@ interface TrafficDao {
     suspend fun getTotalTrafficByDate(date: String): LongArray
 
     /**
+     * 查询指定日期的移动网络和WiFi分别的总流量
+     * @param date 日期字符串（yyyy-MM-dd）
+     * @return LongArray [mobileTotal, wifiTotal]
+     */
+    @Query("SELECT COALESCE(SUM(mobileRx + mobileTx), 0), COALESCE(SUM(wifiRx + wifiTx), 0) FROM traffic_records WHERE date = :date")
+    suspend fun getTrafficByNetworkType(date: String): LongArray
+
+    /**
      * 查询所有流量记录（按时间倒序，分页）
      * @param limit 返回条数上限
      * @return 最近N条流量记录
@@ -71,7 +79,7 @@ interface TrafficDao {
     @Query("SELECT * FROM traffic_records WHERE timestamp >= :startTime AND timestamp <= :endTime ORDER BY timestamp DESC")
     suspend fun getRecordsByTimeRange(startTime: Long, endTime: Long): List<TrafficRecord>
 
-    /** 查询指定月份的所有流量记录（按日期聚合） */
+    /** 查询指定月份的所有流量记录（按包名聚合） */
     @Query("""
         SELECT id, packageName, uid,
                SUM(mobileRx) as mobileRx, SUM(mobileTx) as mobileTx,
@@ -79,8 +87,8 @@ interface TrafficDao {
                date, MIN(timestamp) as timestamp
         FROM traffic_records
         WHERE date LIKE :monthPattern || '%'
-        GROUP BY id, packageName, uid, date
-        ORDER BY date DESC
+        GROUP BY packageName, uid
+        ORDER BY mobileRx + mobileTx + wifiRx + wifiTx DESC
     """)
     suspend fun getMonthlyAggregatedRecords(monthPattern: String): List<TrafficRecord>
 

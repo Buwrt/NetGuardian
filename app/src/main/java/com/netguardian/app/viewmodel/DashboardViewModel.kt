@@ -6,8 +6,10 @@ import androidx.lifecycle.viewModelScope
 import com.netguardian.app.core.RootManager
 import com.netguardian.app.core.ShizukuManager
 import com.netguardian.app.core.TrafficMonitorEngine
+import com.netguardian.app.data.AppDatabase
 import com.netguardian.app.model.NetworkSpeedInfo
 import com.netguardian.app.util.Constants
+import com.netguardian.app.util.TrafficFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -129,17 +131,16 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
     /**
      * 刷新今日流量汇总
-     * 从TrafficStats获取移动和WiFi的总流量
+     * 从数据库读取今日的增量流量数据（而非 TrafficStats 累计值）
      */
     fun refreshTodayTraffic() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val (mobileRx, mobileTx) = trafficEngine.getMobileTotalTraffic()
-                val (totalRx, totalTx) = trafficEngine.getSystemTotalTraffic()
-                val wifiTraffic = (totalRx + totalTx) - (mobileRx + mobileTx)
-
-                _todayMobileTraffic.value = mobileRx + mobileTx
-                _todayWifiTraffic.value = wifiTraffic.coerceAtLeast(0L)
+                val dao = AppDatabase.getInstance(getApplication()).trafficDao()
+                val today = TrafficFormatter.getTodayDate()
+                val result = dao.getTrafficByNetworkType(today)
+                _todayMobileTraffic.value = result[0] // mobileTotal
+                _todayWifiTraffic.value = result[1] // wifiTotal
             } catch (e: Exception) {
                 _errorMessage.value = "获取今日流量失败: ${e.message}"
             }

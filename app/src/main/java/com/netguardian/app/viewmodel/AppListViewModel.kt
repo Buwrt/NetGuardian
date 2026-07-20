@@ -117,8 +117,8 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
      * 加载应用流量列表
      * 步骤：
      * 1. 通过 TrafficMonitorEngine.getInstalledApps() 获取所有已安装的用户可见应用
-     * 2. 通过 TrafficMonitorEngine.getPerAppTraffic() 获取每个应用的精确流量数据
-     * 3. 更新UI状态
+     * 2. 从数据库读取当前月份的流量记录（按包名聚合的增量数据）
+     * 3. 合并已安装应用列表和数据库流量数据
      */
     fun loadAppList() {
         viewModelScope.launch {
@@ -131,31 +131,70 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
 
                 _totalAppCount.value = installedApps.size
 
-                // 第二步：获取有流量数据的应用
-                val trafficApps: List<AppTrafficInfo> = withContext(Dispatchers.IO) {
-                    trafficEngine.getPerAppTraffic()
+                // 第二步：从数据库读取流量数据（按包名聚合）
+                val db = com.netguardian.app.data.AppDatabase.getInstance(getApplication())
+                val dao = db.trafficDao()
+
+                // 查询当前月份的流量记录，按包名聚合
+                val records: List<com.netguardian.app.model.TrafficRecord> = withContext(Dispatchers.IO) {
+                    val now = java.util.Calendar.getInstance()
+                    val monthPattern = "${now.get(java.util.Calendar.YEAR)}-${String.format("%02d", now.get(java.util.Calendar.MONTH) + 1)}"
+                    dao.getMonthlyAggregatedRecords(monthPattern)
                 }
 
-                // 第三步：合并 - 所有已安装应用都应该显示
-                // 创建流量Map方便查找
-                val trafficMap = trafficApps.associateBy { it.packageName }
+                // 第三步：按包名聚合流量
+                val trafficMap = mutableMapOf<String, AppTrafficInfo>()
+                for (record in records) {
+                    val existing = trafficMap[record.packageName]
+                    if (existing != null) {
+                        trafficMap[record.packageName] = AppTrafficInfo(
+                            uid = record.uid,
+                            packageName = record.packageName,
+                            appName = existing.appName,
+                            icon = existing.icon,
+                            mobileRxBytes = existing.mobileRxBytes + record.mobileRx,
+                            mobileTxBytes = existing.mobileTxBytes + record.mobileTx,
+                            wifiRxBytes = existing.wifiRxBytes + record.wifiRx,
+                            wifiTxBytes = existing.wifiTxBytes + record.wifiTx,
+                            lastUpdated = System.currentTimeMillis()
+                        )
+                    } else {
+                        trafficMap[record.packageName] = AppTrafficInfo(
+                            uid = record.uid,
+                            packageName = record.packageName,
+                            appName = record.packageName,
+                            icon = null, // 后面从installedApps补充
+                            mobileRxBytes = record.mobileRx,
+                            mobileTxBytes = record.mobileTx,
+                            wifiRxBytes = record.wifiRx,
+                            wifiTxBytes = record.wifiTx,
+                            lastUpdated = System.currentTimeMillis()
+                        )
+                    }
+                }
 
+                // 第四步：合并已安装应用与数据库流量
                 val allApps = installedApps.map { appInfo ->
-                    trafficMap[appInfo.packageName] ?: AppTrafficInfo(
-                        uid = appInfo.uid,
-                        packageName = appInfo.packageName,
-                        appName = appInfo.appName,
-                        icon = appInfo.icon,
-                        mobileRxBytes = 0L,
-                        mobileTxBytes = 0L,
-                        wifiRxBytes = 0L,
-                        wifiTxBytes = 0L,
-                        lastUpdated = System.currentTimeMillis()
-                    )
+                    val traffic = trafficMap[appInfo.packageName]
+                    if (traffic != null) {
+                        traffic.copy(appName = appInfo.appName, icon = appInfo.icon)
+                    } else {
+                        AppTrafficInfo(
+                            uid = appInfo.uid,
+                            packageName = appInfo.packageName,
+                            appName = appInfo.appName,
+                            icon = appInfo.icon,
+                            mobileRxBytes = 0L,
+                            mobileTxBytes = 0L,
+                            wifiRxBytes = 0L,
+                            wifiTxBytes = 0L,
+                            lastUpdated = System.currentTimeMillis()
+                        )
+                    }
                 }
 
                 _allApps.value = allApps
-                _activeAppCount.value = trafficApps.size
+                _activeAppCount.value = trafficMap.size
                 _totalTraffic.value = allApps.sumOf { it.totalBytes }
                 _errorMessage.value = null
             } catch (e: Exception) {
@@ -179,27 +218,66 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
                 }
                 _totalAppCount.value = installedApps.size
 
-                val trafficApps: List<AppTrafficInfo> = withContext(Dispatchers.IO) {
-                    trafficEngine.getPerAppTraffic()
+                val db = com.netguardian.app.data.AppDatabase.getInstance(getApplication())
+                val dao = db.trafficDao()
+
+                val records: List<com.netguardian.app.model.TrafficRecord> = withContext(Dispatchers.IO) {
+                    val now = java.util.Calendar.getInstance()
+                    val monthPattern = "${now.get(java.util.Calendar.YEAR)}-${String.format("%02d", now.get(java.util.Calendar.MONTH) + 1)}"
+                    dao.getMonthlyAggregatedRecords(monthPattern)
                 }
 
-                val trafficMap = trafficApps.associateBy { it.packageName }
+                val trafficMap = mutableMapOf<String, AppTrafficInfo>()
+                for (record in records) {
+                    val existing = trafficMap[record.packageName]
+                    if (existing != null) {
+                        trafficMap[record.packageName] = AppTrafficInfo(
+                            uid = record.uid,
+                            packageName = record.packageName,
+                            appName = existing.appName,
+                            icon = existing.icon,
+                            mobileRxBytes = existing.mobileRxBytes + record.mobileRx,
+                            mobileTxBytes = existing.mobileTxBytes + record.mobileTx,
+                            wifiRxBytes = existing.wifiRxBytes + record.wifiRx,
+                            wifiTxBytes = existing.wifiTxBytes + record.wifiTx,
+                            lastUpdated = System.currentTimeMillis()
+                        )
+                    } else {
+                        trafficMap[record.packageName] = AppTrafficInfo(
+                            uid = record.uid,
+                            packageName = record.packageName,
+                            appName = record.packageName,
+                            icon = null,
+                            mobileRxBytes = record.mobileRx,
+                            mobileTxBytes = record.mobileTx,
+                            wifiRxBytes = record.wifiRx,
+                            wifiTxBytes = record.wifiTx,
+                            lastUpdated = System.currentTimeMillis()
+                        )
+                    }
+                }
+
                 val allApps = installedApps.map { appInfo ->
-                    trafficMap[appInfo.packageName] ?: AppTrafficInfo(
-                        uid = appInfo.uid,
-                        packageName = appInfo.packageName,
-                        appName = appInfo.appName,
-                        icon = appInfo.icon,
-                        mobileRxBytes = 0L,
-                        mobileTxBytes = 0L,
-                        wifiRxBytes = 0L,
-                        wifiTxBytes = 0L,
-                        lastUpdated = System.currentTimeMillis()
-                    )
+                    val traffic = trafficMap[appInfo.packageName]
+                    if (traffic != null) {
+                        traffic.copy(appName = appInfo.appName, icon = appInfo.icon)
+                    } else {
+                        AppTrafficInfo(
+                            uid = appInfo.uid,
+                            packageName = appInfo.packageName,
+                            appName = appInfo.appName,
+                            icon = appInfo.icon,
+                            mobileRxBytes = 0L,
+                            mobileTxBytes = 0L,
+                            wifiRxBytes = 0L,
+                            wifiTxBytes = 0L,
+                            lastUpdated = System.currentTimeMillis()
+                        )
+                    }
                 }
 
                 _allApps.value = allApps
-                _activeAppCount.value = trafficApps.size
+                _activeAppCount.value = trafficMap.size
                 _totalTraffic.value = allApps.sumOf { it.totalBytes }
                 _errorMessage.value = null
             } catch (e: Exception) {
@@ -212,7 +290,7 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
 
     /**
      * 启动定期刷新
-     * 每30秒自动刷新一次流量数据
+     * 每30秒自动刷新一次流量数据（从数据库读取，不再调用getPerAppTraffic）
      */
     private fun startPeriodicRefresh() {
         viewModelScope.launch {
@@ -224,26 +302,66 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
                     }
                     _totalAppCount.value = installedApps.size
 
-                    val trafficApps: List<AppTrafficInfo> = withContext(Dispatchers.IO) {
-                        trafficEngine.getPerAppTraffic()
+                    val db = com.netguardian.app.data.AppDatabase.getInstance(getApplication())
+                    val dao = db.trafficDao()
+
+                    val records: List<com.netguardian.app.model.TrafficRecord> = withContext(Dispatchers.IO) {
+                        val now = java.util.Calendar.getInstance()
+                        val monthPattern = "${now.get(java.util.Calendar.YEAR)}-${String.format("%02d", now.get(java.util.Calendar.MONTH) + 1)}"
+                        dao.getMonthlyAggregatedRecords(monthPattern)
                     }
 
-                    val trafficMap = trafficApps.associateBy { it.packageName }
+                    val trafficMap = mutableMapOf<String, AppTrafficInfo>()
+                    for (record in records) {
+                        val existing = trafficMap[record.packageName]
+                        if (existing != null) {
+                            trafficMap[record.packageName] = AppTrafficInfo(
+                                uid = record.uid,
+                                packageName = record.packageName,
+                                appName = existing.appName,
+                                icon = existing.icon,
+                                mobileRxBytes = existing.mobileRxBytes + record.mobileRx,
+                                mobileTxBytes = existing.mobileTxBytes + record.mobileTx,
+                                wifiRxBytes = existing.wifiRxBytes + record.wifiRx,
+                                wifiTxBytes = existing.wifiTxBytes + record.wifiTx,
+                                lastUpdated = System.currentTimeMillis()
+                            )
+                        } else {
+                            trafficMap[record.packageName] = AppTrafficInfo(
+                                uid = record.uid,
+                                packageName = record.packageName,
+                                appName = record.packageName,
+                                icon = null,
+                                mobileRxBytes = record.mobileRx,
+                                mobileTxBytes = record.mobileTx,
+                                wifiRxBytes = record.wifiRx,
+                                wifiTxBytes = record.wifiTx,
+                                lastUpdated = System.currentTimeMillis()
+                            )
+                        }
+                    }
+
                     val allApps = installedApps.map { appInfo ->
-                        trafficMap[appInfo.packageName] ?: AppTrafficInfo(
-                            uid = appInfo.uid,
-                            packageName = appInfo.packageName,
-                            appName = appInfo.appName,
-                            icon = appInfo.icon,
-                            mobileRxBytes = 0L,
-                            mobileTxBytes = 0L,
-                            wifiRxBytes = 0L,
-                            wifiTxBytes = 0L,
-                            lastUpdated = System.currentTimeMillis()
-                        )
+                        val traffic = trafficMap[appInfo.packageName]
+                        if (traffic != null) {
+                            traffic.copy(appName = appInfo.appName, icon = appInfo.icon)
+                        } else {
+                            AppTrafficInfo(
+                                uid = appInfo.uid,
+                                packageName = appInfo.packageName,
+                                appName = appInfo.appName,
+                                icon = appInfo.icon,
+                                mobileRxBytes = 0L,
+                                mobileTxBytes = 0L,
+                                wifiRxBytes = 0L,
+                                wifiTxBytes = 0L,
+                                lastUpdated = System.currentTimeMillis()
+                            )
+                        }
                     }
 
                     _allApps.value = allApps
+                    _activeAppCount.value = trafficMap.size
                     _totalTraffic.value = allApps.sumOf { it.totalBytes }
                 } catch (_: Exception) {
                     // 后台刷新失败静默处理
