@@ -83,38 +83,21 @@ object Constants {
     const val MODE_NONE = "none"
 
     // ==================== iptables命令模板 ====================
+    // 注意：不指定 -o/-i 接口名，对所有网络接口生效。
+    // 这样避免了不同设备/Android版本下移动网络接口名不一致的问题
+    // （如 rmnet+, ccmni+, rmnet_data+, data+ 等）。
 
-    /** iptables屏蔽移动网络出站（按UID） */
-    const val IPTABLES_BLOCK_MOBILE_OUT =
-        "iptables -A OUTPUT -m owner --uid-owner %d -o rmnet+ -j REJECT"
+    /** iptables屏蔽所有网络出站（按UID） */
+    const val IPTABLES_BLOCK_ALL_OUT =
+        "iptables -I OUTPUT -m owner --uid-owner %d -j REJECT --reject-with icmp-port-unreachable"
 
-    /** iptables屏蔽移动网络入站（按UID） */
-    const val IPTABLES_BLOCK_MOBILE_IN =
-        "iptables -A INPUT -m owner --uid-owner %d -i rmnet+ -j REJECT"
+    /** iptables屏蔽所有网络出站+入站（按UID） */
+    const val IPTABLES_BLOCK_ALL =
+        "iptables -I OUTPUT -m owner --uid-owner %d -j REJECT --reject-with icmp-port-unreachable; iptables -I INPUT -m owner --uid-owner %d -j DROP"
 
-    /** iptables屏蔽WiFi出站（按UID） */
-    const val IPTABLES_BLOCK_WIFI_OUT =
-        "iptables -A OUTPUT -m owner --uid-owner %d -o wlan+ -j REJECT"
-
-    /** iptables屏蔽WiFi入站（按UID） */
-    const val IPTABLES_BLOCK_WIFI_IN =
-        "iptables -A INPUT -m owner --uid-owner %d -i wlan+ -j REJECT"
-
-    /** iptables解除移动网络出站屏蔽 */
-    const val IPTABLES_UNBLOCK_MOBILE_OUT =
-        "iptables -D OUTPUT -m owner --uid-owner %d -o rmnet+ -j REJECT"
-
-    /** iptables解除移动网络入站屏蔽 */
-    const val IPTABLES_UNBLOCK_MOBILE_IN =
-        "iptables -D INPUT -m owner --uid-owner %d -i rmnet+ -j REJECT"
-
-    /** iptables解除WiFi出站屏蔽 */
-    const val IPTABLES_UNBLOCK_WIFI_OUT =
-        "iptables -D OUTPUT -m owner --uid-owner %d -o wlan+ -j REJECT"
-
-    /** iptables解除WiFi入站屏蔽 */
-    const val IPTABLES_UNBLOCK_WIFI_IN =
-        "iptables -D INPUT -m owner --uid-owner %d -i wlan+ -j REJECT"
+    /** iptables解除所有网络屏蔽（按UID） */
+    const val IPTABLES_UNBLOCK_ALL =
+        "iptables -D OUTPUT -m owner --uid-owner %d -j REJECT --reject-with icmp-port-unreachable 2>/dev/null; iptables -D INPUT -m owner --uid-owner %d -j DROP 2>/dev/null"
 
     /** iptables刷新所有自定义规则（清理） */
     const val IPTABLES_FLUSH =
@@ -123,21 +106,13 @@ object Constants {
     /** 检查iptables是否可用 */
     const val IPTABLES_CHECK = "which iptables"
 
-    /** ip6tables屏蔽移动网络出站（按UID，IPv6） */
-    const val IP6TABLES_BLOCK_MOBILE_OUT =
-        "ip6tables -A OUTPUT -m owner --uid-owner %d -o rmnet+ -j REJECT"
+    /** ip6tables屏蔽所有网络出站（按UID） */
+    const val IP6TABLES_BLOCK_ALL_OUT =
+        "ip6tables -I OUTPUT -m owner --uid-owner %d -j REJECT --reject-with icmpv6-port-unreachable"
 
-    /** ip6tables屏蔽WiFi出站（按UID，IPv6） */
-    const val IP6TABLES_BLOCK_WIFI_OUT =
-        "ip6tables -A OUTPUT -m owner --uid-owner %d -o wlan+ -j REJECT"
-
-    /** ip6tables解除移动网络出站屏蔽 */
-    const val IP6TABLES_UNBLOCK_MOBILE_OUT =
-        "ip6tables -D OUTPUT -m owner --uid-owner %d -o rmnet+ -j REJECT"
-
-    /** ip6tables解除WiFi出站屏蔽 */
-    const val IP6TABLES_UNBLOCK_WIFI_OUT =
-        "ip6tables -D OUTPUT -m owner --uid-owner %d -o wlan+ -j REJECT"
+    /** ip6tables解除所有网络屏蔽（按UID） */
+    const val IP6TABLES_UNBLOCK_ALL =
+        "ip6tables -D OUTPUT -m owner --uid-owner %d -j REJECT --reject-with icmpv6-port-unreachable 2>/dev/null"
 
     // ==================== 刷新间隔 ====================
 

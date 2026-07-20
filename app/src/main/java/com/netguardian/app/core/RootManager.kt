@@ -420,18 +420,12 @@ class RootManager private constructor() {
             return false
         }
 
-        // 解除所有屏蔽规则（移动网络+WiFi，包括IPv6）
-        val commands = listOf(
-            String.format(Constants.IPTABLES_UNBLOCK_MOBILE_OUT, uid),
-            String.format(Constants.IPTABLES_UNBLOCK_MOBILE_IN, uid),
-            String.format(Constants.IPTABLES_UNBLOCK_WIFI_OUT, uid),
-            String.format(Constants.IPTABLES_UNBLOCK_WIFI_IN, uid),
-            String.format(Constants.IP6TABLES_UNBLOCK_MOBILE_OUT, uid),
-            String.format(Constants.IP6TABLES_UNBLOCK_WIFI_OUT, uid),
-        )
+        // 解除所有网络屏蔽规则（IPv4 + IPv6，不区分接口）
+        val cmdIPv4 = String.format(Constants.IPTABLES_UNBLOCK_ALL, uid, uid)
+        val cmdIPv6 = String.format(Constants.IP6TABLES_UNBLOCK_ALL, uid)
 
         var allSuccess = true
-        for (cmd in commands) {
+        for (cmd in listOf(cmdIPv4, cmdIPv6)) {
             val result = executeRootCommand(cmd)
             if (result == null) {
                 // 删除不存在的规则时可能返回错误，这不算失败
@@ -453,38 +447,45 @@ class RootManager private constructor() {
      */
     fun setIptablesRule(packageName: String, uid: Int, block: Boolean): Boolean {
         if (!_isRootAvailable.value) {
+            Log.w(TAG, "setIptablesRule: Root不可用，跳过 $packageName (UID:$uid)")
+            return false
+        }
+
+        if (uid < 0) {
+            Log.w(TAG, "setIptablesRule: UID无效 ($uid)，跳过 $packageName")
             return false
         }
 
         val commands = mutableListOf<String>()
 
         if (block) {
-            // 添加屏蔽规则
-            commands.add(String.format(Constants.IPTABLES_BLOCK_MOBILE_OUT, uid))
-            commands.add(String.format(Constants.IPTABLES_BLOCK_WIFI_OUT, uid))
-            // IPv6也需要屏蔽
-            commands.add(String.format(Constants.IP6TABLES_BLOCK_MOBILE_OUT, uid))
-            commands.add(String.format(Constants.IP6TABLES_BLOCK_WIFI_OUT, uid))
+            // 添加屏蔽规则：对所有网络接口生效（IPv4出站+入站, IPv6出站）
+            commands.add(String.format(Constants.IPTABLES_BLOCK_ALL, uid, uid))
+            commands.add(String.format(Constants.IP6TABLES_BLOCK_ALL_OUT, uid))
         } else {
             // 删除屏蔽规则
-            commands.add(String.format(Constants.IPTABLES_UNBLOCK_MOBILE_OUT, uid))
-            commands.add(String.format(Constants.IPTABLES_UNBLOCK_WIFI_OUT, uid))
-            commands.add(String.format(Constants.IP6TABLES_UNBLOCK_MOBILE_OUT, uid))
-            commands.add(String.format(Constants.IP6TABLES_UNBLOCK_WIFI_OUT, uid))
+            commands.add(String.format(Constants.IPTABLES_UNBLOCK_ALL, uid, uid))
+            commands.add(String.format(Constants.IP6TABLES_UNBLOCK_ALL, uid))
         }
 
         var success = true
+        var failedCount = 0
         for (cmd in commands) {
             val result = executeRootCommand(cmd)
             if (result == null && block) {
-                // 添加规则失败则标记为失败，删除规则时null不算失败
+                // 添加规则失败则标记为失败，删除规则时null不算失败（规则可能不存在）
+                failedCount++
                 Log.w(TAG, "iptables命令执行失败: $cmd")
                 success = false
             }
         }
 
         val action = if (block) "屏蔽" else "解除屏蔽"
-        Log.i(TAG, "${action}应用 $packageName (UID:$uid) 结果: $success")
+        if (success) {
+            Log.i(TAG, "${action}应用 $packageName (UID:$uid) 成功")
+        } else {
+            Log.w(TAG, "${action}应用 $packageName (UID:$uid) 部分失败 ($failedCount/${commands.size} 条命令未执行)")
+        }
         return success
     }
 
