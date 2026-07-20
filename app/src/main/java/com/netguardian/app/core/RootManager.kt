@@ -135,13 +135,10 @@ class RootManager private constructor() {
      * @return 命令输出结果，失败返回null
      */
     fun executeRootCommand(command: String): String? {
-        if (!_isRootAvailable.value) {
-            Log.w(TAG, "Root不可用，无法执行命令: $command")
-            return null
-        }
-
+        // 不再检查 _isRootAvailable，直接尝试执行
+        // 因为 _isRootAvailable 可能不准确（init时检测可能失败）
         return try {
-            Log.d(TAG, "执行Root命令: $command")
+            Log.d(TAG, "执行Root命令: ${command.take(100)}")
             val process = Runtime.getRuntime().exec(arrayOf("su", "-c", command))
 
             // 读取正常输出
@@ -186,7 +183,7 @@ class RootManager private constructor() {
      * @return 进程流量数据，读取失败返回全0数据
      */
     fun getProcessTraffic(uid: Int): ProcessTrafficData {
-        if (uid < 0 || !_isRootAvailable.value) {
+        if (uid < 0) {
             return ProcessTrafficData(0L, 0L)
         }
 
