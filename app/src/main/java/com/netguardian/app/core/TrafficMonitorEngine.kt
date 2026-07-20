@@ -102,27 +102,25 @@ class TrafficMonitorEngine(private val context: Context) {
             val storedMode = kotlinx.coroutines.runBlocking {
                 com.netguardian.app.util.DataStoreHelper.getPrivilegeModeOnce(context)
             }
-            if (storedMode != Constants.MODE_NONE) {
-                if (storedMode == Constants.MODE_ROOT) {
-                    if (rootManager.hasRootAccess()) {
-                        rootManager.isRootAvailable.value = true
-                        storedMode
-                    } else {
-                        rootManager.isRootAvailable.value = false
-                        Constants.MODE_NONE
-                    }
-                } else {
-                    storedMode
+            when {
+                storedMode == Constants.MODE_ROOT -> {
+                    val hasRoot = rootManager.hasRootAccess()
+                    rootManager.isRootAvailable.value = hasRoot
+                    if (hasRoot) Constants.MODE_ROOT else Constants.MODE_NONE
                 }
-            } else {
-                when {
-                    rootManager.hasRootAccess() -> {
-                        rootManager.isRootAvailable.value = true
-                        Constants.MODE_ROOT
+                storedMode == Constants.MODE_SHIZUKU -> storedMode
+                storedMode == Constants.MODE_NONE -> {
+                    // 没有存储的模式，自动检测
+                    when {
+                        rootManager.hasRootAccess() -> {
+                            rootManager.isRootAvailable.value = true
+                            Constants.MODE_ROOT
+                        }
+                        shizukuManager.isShizukuAvailable() -> Constants.MODE_SHIZUKU
+                        else -> Constants.MODE_NONE
                     }
-                    shizukuManager.isShizukuAvailable() -> Constants.MODE_SHIZUKU
-                    else -> Constants.MODE_NONE
                 }
+                else -> storedMode
             }
         } catch (e: Exception) {
             when {
