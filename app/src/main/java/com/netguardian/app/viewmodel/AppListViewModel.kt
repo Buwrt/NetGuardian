@@ -1,6 +1,7 @@
 package com.netguardian.app.viewmodel
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.netguardian.app.core.TrafficMonitorEngine
@@ -106,6 +107,10 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
+    /** 是否处于 fallback 模式（Root 实时读取，而非数据库聚合） */
+    private val _isFallbackMode = MutableStateFlow(false)
+    val isFallbackMode: StateFlow<Boolean> = _isFallbackMode.asStateFlow()
+
     init {
         // 首次加载应用列表：先获取已安装应用，再获取每个应用的流量
         loadAppList()
@@ -131,11 +136,10 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
 
                 _totalAppCount.value = installedApps.size
 
-                // 第二步：从数据库读取流量数据（按包名聚合）
+                // 第二步：从数据库读取当月聚合流量
                 val db = com.netguardian.app.data.AppDatabase.getInstance(getApplication())
                 val dao = db.trafficDao()
 
-                // 查询当前月份的流量记录，按包名聚合
                 val records: List<com.netguardian.app.model.TrafficRecord> = withContext(Dispatchers.IO) {
                     val now = java.util.Calendar.getInstance()
                     val monthPattern = "${now.get(java.util.Calendar.YEAR)}-${String.format("%02d", now.get(java.util.Calendar.MONTH) + 1)}"
@@ -173,7 +177,47 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
                     }
                 }
 
-                // 第四步：合并已安装应用与数据库流量
+                // 第四步：如果数据库为空，fallback 到 Root 实时读取
+                var useFallbackData = false
+                if (trafficMap.isEmpty()) {
+                    Log.i(TAG, "数据库无数据，尝试 Root 实时读取")
+                    val rootTraffic: Map<Int, Pair<Long, Long>> = withContext(Dispatchers.IO) {
+                        try {
+                            val rootManager = com.netguardian.app.core.RootManager.getInstance()
+                            if (rootManager.hasRootAccess()) {
+                                rootManager.getAllUidTraffic()
+                            } else {
+                                emptyMap()
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Root fallback 读取失败: ${e.message}")
+                            emptyMap()
+                        }
+                    }
+
+                    if (rootTraffic.isNotEmpty()) {
+                        useFallbackData = true
+                        for ((uid, rxTx) in rootTraffic) {
+                            val app = installedApps.find { it.uid == uid }
+                            if (app != null && (rxTx.first > 0 || rxTx.second > 0)) {
+                                trafficMap[app.packageName] = AppTrafficInfo(
+                                    uid = uid,
+                                    packageName = app.packageName,
+                                    appName = app.appName,
+                                    icon = app.icon,
+                                    mobileRxBytes = rxTx.first,
+                                    mobileTxBytes = rxTx.second,
+                                    wifiRxBytes = 0L,
+                                    wifiTxBytes = 0L,
+                                    lastUpdated = System.currentTimeMillis()
+                                )
+                            }
+                        }
+                        Log.i(TAG, "Root fallback 获取到 ${trafficMap.size} 个应用流量")
+                    }
+                }
+
+                // 第五步：合并已安装应用与流量数据
                 val allApps = installedApps.map { appInfo ->
                     val traffic = trafficMap[appInfo.packageName]
                     if (traffic != null) {
@@ -196,9 +240,11 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
                 _allApps.value = allApps
                 _activeAppCount.value = trafficMap.size
                 _totalTraffic.value = allApps.sumOf { it.totalBytes }
+                _isFallbackMode.value = useFallbackData
                 _errorMessage.value = null
             } catch (e: Exception) {
                 _errorMessage.value = "加载应用列表失败: ${e.message}"
+                Log.e(TAG, "加载失败", e)
             } finally {
                 _isLoading.value = false
             }
@@ -257,6 +303,46 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
                     }
                 }
 
+                // 如果数据库为空，fallback 到 Root 实时读取
+                var useFallbackData = false
+                if (trafficMap.isEmpty()) {
+                    Log.i(TAG, "刷新：数据库无数据，尝试 Root 实时读取")
+                    val rootTraffic: Map<Int, Pair<Long, Long>> = withContext(Dispatchers.IO) {
+                        try {
+                            val rootManager = com.netguardian.app.core.RootManager.getInstance()
+                            if (rootManager.hasRootAccess()) {
+                                rootManager.getAllUidTraffic()
+                            } else {
+                                emptyMap()
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Root fallback 读取失败: ${e.message}")
+                            emptyMap()
+                        }
+                    }
+
+                    if (rootTraffic.isNotEmpty()) {
+                        useFallbackData = true
+                        for ((uid, rxTx) in rootTraffic) {
+                            val app = installedApps.find { it.uid == uid }
+                            if (app != null && (rxTx.first > 0 || rxTx.second > 0)) {
+                                trafficMap[app.packageName] = AppTrafficInfo(
+                                    uid = uid,
+                                    packageName = app.packageName,
+                                    appName = app.appName,
+                                    icon = app.icon,
+                                    mobileRxBytes = rxTx.first,
+                                    mobileTxBytes = rxTx.second,
+                                    wifiRxBytes = 0L,
+                                    wifiTxBytes = 0L,
+                                    lastUpdated = System.currentTimeMillis()
+                                )
+                            }
+                        }
+                        Log.i(TAG, "刷新：Root fallback 获取到 ${trafficMap.size} 个应用流量")
+                    }
+                }
+
                 val allApps = installedApps.map { appInfo ->
                     val traffic = trafficMap[appInfo.packageName]
                     if (traffic != null) {
@@ -279,9 +365,11 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
                 _allApps.value = allApps
                 _activeAppCount.value = trafficMap.size
                 _totalTraffic.value = allApps.sumOf { it.totalBytes }
+                _isFallbackMode.value = useFallbackData
                 _errorMessage.value = null
             } catch (e: Exception) {
                 _errorMessage.value = "刷新失败: ${e.message}"
+                Log.e(TAG, "刷新失败", e)
             } finally {
                 _isRefreshing.value = false
             }

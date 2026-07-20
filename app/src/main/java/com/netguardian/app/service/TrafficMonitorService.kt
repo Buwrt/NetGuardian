@@ -212,6 +212,7 @@ class TrafficMonitorService : Service() {
             }
 
             _isRunning.value = true
+            Log.i(TAG, "========== 流量监控服务已启动 ==========")
             Log.i(TAG, "启动流量监控，权限模式: ${settings.privilegeMode}")
 
             // 初始化网速基准值
@@ -416,6 +417,7 @@ class TrafficMonitorService : Service() {
      */
     private suspend fun collectAndSaveTrafficData() {
         try {
+            Log.i(TAG, "collectAndSaveTrafficData 被调用, lastUidTraffic size: ${lastUidTraffic.size}")
             val apps = trafficMonitorEngine.getInstalledApps(applicationContext)
             val mode = kotlinx.coroutines.runBlocking {
                 com.netguardian.app.util.DataStoreHelper.getPrivilegeModeOnce(applicationContext)

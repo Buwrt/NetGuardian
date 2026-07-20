@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -123,6 +124,7 @@ fun AppListScreen(
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val totalAppCount by viewModel.totalAppCount.collectAsStateWithLifecycle()
     val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
+    val isFallbackMode by viewModel.isFallbackMode.collectAsStateWithLifecycle()
 
     // 搜索栏展开状态
     var isSearchExpanded by remember { mutableStateOf(false) }
@@ -245,6 +247,25 @@ fun AppListScreen(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                 thickness = 0.5.dp
             )
+
+            // Fallback 模式提示
+            if (isFallbackMode) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "当前显示开机以来累计流量，差值统计积累后将自动切换为精确流量",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            }
 
             // ==================== 列表 / 状态区 ====================
             Box(
