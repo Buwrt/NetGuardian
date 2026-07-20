@@ -97,6 +97,13 @@ class RootManager private constructor() {
     }
 
     /**
+     * 更新Root权限状态（供外部调用）
+     */
+    fun updateRootStatus(available: Boolean) {
+        _isRootAvailable.value = available
+    }
+
+    /**
      * 请求Root权限
      * 尝试执行一个简单的Root命令来触发Superuser授权弹窗
      *

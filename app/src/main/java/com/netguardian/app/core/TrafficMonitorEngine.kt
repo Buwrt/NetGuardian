@@ -105,7 +105,7 @@ class TrafficMonitorEngine(private val context: Context) {
             when {
                 storedMode == Constants.MODE_ROOT -> {
                     val hasRoot = rootManager.hasRootAccess()
-                    rootManager.isRootAvailable.value = hasRoot
+                    rootManager.updateRootStatus(hasRoot)
                     if (hasRoot) Constants.MODE_ROOT else Constants.MODE_NONE
                 }
                 storedMode == Constants.MODE_SHIZUKU -> storedMode
@@ -113,7 +113,7 @@ class TrafficMonitorEngine(private val context: Context) {
                     // 没有存储的模式，自动检测
                     when {
                         rootManager.hasRootAccess() -> {
-                            rootManager.isRootAvailable.value = true
+                            rootManager.updateRootStatus(true)
                             Constants.MODE_ROOT
                         }
                         shizukuManager.isShizukuAvailable() -> Constants.MODE_SHIZUKU
@@ -137,7 +137,7 @@ class TrafficMonitorEngine(private val context: Context) {
      */
     fun refreshRootStatus() {
         val hasRoot = rootManager.hasRootAccess()
-        rootManager.isRootAvailable.value = hasRoot
+        rootManager.updateRootStatus(hasRoot)
         Log.i(TAG, "Root状态刷新: $hasRoot")
     }
 
