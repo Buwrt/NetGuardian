@@ -316,6 +316,13 @@ object DataStoreHelper {
         return context.dataStore.data.first()[KEY_PRIVILEGE_MODE] ?: Constants.MODE_NONE
     }
 
+    /** 一次性读取权限模式（非Flow） */
+    suspend fun getPrivilegeModeOnce(context: Context): String {
+        return context.dataStore.data.map { prefs ->
+            prefs[KEY_PRIVILEGE_MODE] ?: Constants.MODE_NONE
+        }.first()
+    }
+
     /**
      * 设置当前权限模式
      * @param context 上下文

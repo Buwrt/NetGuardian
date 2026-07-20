@@ -93,14 +93,54 @@ class TrafficMonitorEngine(private val context: Context) {
 
     /**
      * 获取当前权限模式
+     * 优先使用 DataStore 中用户设置的模式，如果存储的是 Root 模式则验证 Root 是否可用。
+     * 没有存储的模式时自动检测。
      * @return "root" / "shizuku" / "none"
      */
     private fun getPrivilegeMode(): String {
-        return when {
-            rootManager.isRootAvailable.value -> Constants.MODE_ROOT
-            shizukuManager.isShizukuAvailable() -> Constants.MODE_SHIZUKU
-            else -> Constants.MODE_NONE
+        return try {
+            val storedMode = kotlinx.coroutines.runBlocking {
+                com.netguardian.app.util.DataStoreHelper.getPrivilegeModeOnce(context)
+            }
+            if (storedMode != Constants.MODE_NONE) {
+                if (storedMode == Constants.MODE_ROOT) {
+                    if (rootManager.hasRootAccess()) {
+                        rootManager.isRootAvailable.value = true
+                        storedMode
+                    } else {
+                        rootManager.isRootAvailable.value = false
+                        Constants.MODE_NONE
+                    }
+                } else {
+                    storedMode
+                }
+            } else {
+                when {
+                    rootManager.hasRootAccess() -> {
+                        rootManager.isRootAvailable.value = true
+                        Constants.MODE_ROOT
+                    }
+                    shizukuManager.isShizukuAvailable() -> Constants.MODE_SHIZUKU
+                    else -> Constants.MODE_NONE
+                }
+            }
+        } catch (e: Exception) {
+            when {
+                rootManager.isRootAvailable.value -> Constants.MODE_ROOT
+                shizukuManager.isShizukuAvailable() -> Constants.MODE_SHIZUKU
+                else -> Constants.MODE_NONE
+            }
         }
+    }
+
+    /**
+     * 刷新 Root 状态
+     * 重新检测 Root 权限并更新内部状态
+     */
+    fun refreshRootStatus() {
+        val hasRoot = rootManager.hasRootAccess()
+        rootManager.isRootAvailable.value = hasRoot
+        Log.i(TAG, "Root状态刷新: $hasRoot")
     }
 
     // ==================== 系统流量统计 ====================

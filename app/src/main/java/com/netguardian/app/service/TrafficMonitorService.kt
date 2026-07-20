@@ -190,6 +190,9 @@ class TrafficMonitorService : Service() {
      */
     private suspend fun loadSettingsAndStartMonitoring() = withContext(Dispatchers.IO) {
         try {
+            // 刷新 Root 状态
+            trafficMonitorEngine.refreshRootStatus()
+
             // 批量读取所有设置
             val settings = DataStoreHelper.getAllSettings(applicationContext)
             showMonitorNotification = settings.monitorNotification

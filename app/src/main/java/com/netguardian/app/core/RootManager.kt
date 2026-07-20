@@ -213,27 +213,38 @@ class RootManager private constructor() {
 
     /**
      * 获取所有UID的流量统计
-     * Android 10+ 使用 cmd netstats 命令
-     * Android 9- 使用 /proc/net/xt_qtaguid/stats
+     * 优先使用 /proc/uid_stat/ 目录（最可靠），备用 dumpsys netstats
      *
      * @return Map<UID, Pair<rxBytes, txBytes>>
      */
     fun getAllUidTraffic(): Map<Int, Pair<Long, Long>> {
-        if (!_isRootAvailable.value) return emptyMap()
-
-        // 方式1：读取 /proc/net/xt_qtaguid/stats（Android 9及以下）
-        val result1 = executeRootCommand("cat /proc/net/xt_qtaguid/stats 2>/dev/null")
-        if (!result1.isNullOrEmpty()) {
-            val trafficMap = parseXtQtaguidStats(result1)
-            if (trafficMap.isNotEmpty()) {
-                Log.d(TAG, "xt_qtaguid/stats 读取到 ${trafficMap.size} 个UID")
-                return trafficMap
-            }
+        val hasRoot = hasRootAccess()
+        _isRootAvailable.value = hasRoot
+        if (!hasRoot) {
+            Log.w(TAG, "Root不可用")
+            return emptyMap()
         }
 
-        // 方式2：Android 10+ 用 cmd netstats（需要通过 dumpsys）
-        // dumpsys netstats 命令可以获取流量统计
-        val result2 = executeRootCommand("dumpsys netstats --uid")
+        // 方式1：直接读取 /proc/uid_stat/ 目录（最可靠）
+        val uidStatResult = try {
+            val result = executeRootCommand("ls /proc/uid_stat/")
+            if (!result.isNullOrEmpty()) {
+                parseUidStatDirectory(result)
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.d(TAG, "读取 /proc/uid_stat/ 失败: ${e.message}")
+            null
+        }
+
+        if (uidStatResult != null && uidStatResult.isNotEmpty()) {
+            Log.d(TAG, "/proc/uid_stat/ 读取到 ${uidStatResult.size} 个UID")
+            return uidStatResult
+        }
+
+        // 方式2：dumpsys netstats（备用）
+        val result2 = executeRootCommand("dumpsys netstats")
         if (!result2.isNullOrEmpty()) {
             val trafficMap = parseNetstatsDumpsys(result2)
             if (trafficMap.isNotEmpty()) {
@@ -242,8 +253,47 @@ class RootManager private constructor() {
             }
         }
 
-        Log.w(TAG, "Root模式无法通过任何方式获取per-UID流量")
+        Log.w(TAG, "Root模式无法获取per-UID流量")
         return emptyMap()
+    }
+
+    /**
+     * 解析 /proc/uid_stat/ 目录列表
+     * 使用 shell 循环一次读取所有 UID 的流量
+     */
+    private fun parseUidStatDirectory(uidList: String): Map<Int, Pair<Long, Long>> {
+        val trafficMap = mutableMapOf<Int, Pair<Long, Long>>()
+        val uids = uidList.trim().lines().map { it.trim() }.filter { it.matches(Regex("\\d+")) }
+        if (uids.isEmpty()) return emptyMap()
+
+        // 使用 shell 循环一次读取所有 UID 的流量
+        val script = """
+            for uid in ${uids.joinToString(" ")}; do
+                rx_file="/proc/uid_stat/${'$'}uid/tcp_rcv"
+                tx_file="/proc/uid_stat/${'$'}uid/tcp_snd"
+                if [ -f "${'$'}rx_file" ] && [ -f "${'$'}tx_file" ]; then
+                    rx=${'$'}(cat "${'$'}rx_file" 2>/dev/null)
+                    tx=${'$'}(cat "${'$'}tx_file" 2>/dev/null)
+                    echo "${'$'}uid ${'$'}rx ${'$'}tx"
+                fi
+            done
+        """.trimIndent()
+
+        val result = executeRootCommand(script) ?: return emptyMap()
+
+        for (line in result.lines()) {
+            val parts = line.trim().split(Regex("\\s+"))
+            if (parts.size >= 3) {
+                val uid = parts[0].toIntOrNull() ?: continue
+                val rx = parts[1].toLongOrNull() ?: 0L
+                val tx = parts[2].toLongOrNull() ?: 0L
+                if (rx > 0 || tx > 0) {
+                    trafficMap[uid] = Pair(rx, tx)
+                }
+            }
+        }
+
+        return trafficMap
     }
 
     /**
