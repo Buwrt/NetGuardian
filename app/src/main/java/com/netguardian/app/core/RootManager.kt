@@ -266,40 +266,49 @@ class RootManager private constructor() {
 
     /**
      * 解析 /proc/uid_stat/ 目录列表
-     * 使用 shell 循环一次读取所有 UID 的流量
+     * 分批读取每个 UID 的 tcp_rcv/tcp_snd，避免命令过长导致 su -c 失败
      */
     private fun parseUidStatDirectory(uidList: String): Map<Int, Pair<Long, Long>> {
         val trafficMap = mutableMapOf<Int, Pair<Long, Long>>()
         val uids = uidList.trim().lines().map { it.trim() }.filter { it.matches(Regex("\\d+")) }
         if (uids.isEmpty()) return emptyMap()
 
-        // 使用 shell 循环一次读取所有 UID 的流量
-        val script = """
-            for uid in ${uids.joinToString(" ")}; do
-                rx_file="/proc/uid_stat/${'$'}uid/tcp_rcv"
-                tx_file="/proc/uid_stat/${'$'}uid/tcp_snd"
-                if [ -f "${'$'}rx_file" ] && [ -f "${'$'}tx_file" ]; then
-                    rx=${'$'}(cat "${'$'}rx_file" 2>/dev/null)
-                    tx=${'$'}(cat "${'$'}tx_file" 2>/dev/null)
-                    echo "${'$'}uid ${'$'}rx ${'$'}tx"
-                fi
-            done
-        """.trimIndent()
+        Log.d(TAG, "开始读取 ${uids.size} 个UID的流量数据")
 
-        val result = executeRootCommand(script) ?: return emptyMap()
+        // 分批读取，每批20个UID，避免命令过长
+        val batchSize = 20
+        for (i in uids.indices step batchSize) {
+            val batch = uids.subList(i, minOf(i + batchSize, uids.size))
 
-        for (line in result.lines()) {
-            val parts = line.trim().split(Regex("\\s+"))
-            if (parts.size >= 3) {
-                val uid = parts[0].toIntOrNull() ?: continue
-                val rx = parts[1].toLongOrNull() ?: 0L
-                val tx = parts[2].toLongOrNull() ?: 0L
-                if (rx > 0 || tx > 0) {
-                    trafficMap[uid] = Pair(rx, tx)
+            // 为每个UID构建 cat 命令
+            val commands = batch.flatMap { uid ->
+                listOf(
+                    "cat /proc/uid_stat/$uid/tcp_rcv 2>/dev/null",
+                    "cat /proc/uid_stat/$uid/tcp_snd 2>/dev/null"
+                )
+            }.joinToString(" ; echo SEP ; ")
+
+            val result = executeRootCommand(commands) ?: continue
+
+            // 解析输出：每两行为一组（rx, tx）
+            val segments = result.split("SEP")
+            var j = 0
+            for (uid in batch) {
+                if (j < segments.size) {
+                    val lines = segments[j].trim().lines().filter { it.isNotBlank() }
+                    if (lines.size >= 2) {
+                        val rx = lines[0].trim().toLongOrNull() ?: 0L
+                        val tx = lines[1].trim().toLongOrNull() ?: 0L
+                        if (rx > 0 || tx > 0) {
+                            trafficMap[uid.toInt()] = Pair(rx, tx)
+                        }
+                    }
                 }
+                j++
             }
         }
 
+        Log.d(TAG, "成功读取 ${trafficMap.size} 个UID的流量数据")
         return trafficMap
     }
 
@@ -336,22 +345,33 @@ class RootManager private constructor() {
 
     /**
      * 解析 dumpsys netstats 输出
-     * 这个输出格式比较复杂，尝试提取 UID -> rx/tx 的映射
+     * 兼容多种 ROM 的输出格式，尝试提取 UID -> rx/tx 的映射
      */
     private fun parseNetstatsDumpsys(output: String): Map<Int, Pair<Long, Long>> {
         val trafficMap = mutableMapOf<Int, Pair<Long, Long>>()
-        // dumpsys netstats 的输出包含 ident 块，每行格式类似:
-        // "uid=10012 tag=0x0 set=DEFAULT rb=12345 rp=10 tb=67890 tp=20"
-        val regex = Regex("""uid=(\d+).*?\brb=(\d+).*?\btb=(\d+)""")
+
+        // 尝试多种正则模式匹配不同 ROM 的输出格式
+        val patterns = listOf(
+            // 格式1: uid=10012 tag=0x0 set=DEFAULT rb=12345 rp=10 tb=67890 tp=20
+            Regex("""uid=(\d+).*?\brb=(\d+).*?\btb=(\d+)"""),
+            // 格式2: uid=10123 identifier=com.app type=DEFAULT rxBytes=12345 txBytes=67890
+            Regex("""uid=(\d+).*?\brxBytes=(\d+).*?\btxBytes=(\d+)"""),
+            // 格式3: uid=10123  rb=12345  tb=67890
+            Regex("""uid=(\d+)\s+.*?rb=(\d+).*?tb=(\d+)"""),
+        )
 
         for (line in output.lines()) {
-            val match = regex.find(line) ?: continue
-            val uid = match.groupValues[1].toIntOrNull() ?: continue
-            val rx = match.groupValues[2].toLongOrNull() ?: 0L
-            val tx = match.groupValues[3].toLongOrNull() ?: 0L
-
-            val current = trafficMap.getOrDefault(uid, 0L to 0L)
-            trafficMap[uid] = (current.first + rx) to (current.second + tx)
+            for (pattern in patterns) {
+                val match = pattern.find(line) ?: continue
+                val uid = match.groupValues[1].toIntOrNull() ?: continue
+                val rx = match.groupValues[2].toLongOrNull() ?: 0L
+                val tx = match.groupValues[3].toLongOrNull() ?: 0L
+                if (rx > 0 || tx > 0) {
+                    val current = trafficMap.getOrDefault(uid, 0L to 0L)
+                    trafficMap[uid] = (current.first + rx) to (current.second + tx)
+                }
+                break // 一行只匹配一次
+            }
         }
 
         return trafficMap

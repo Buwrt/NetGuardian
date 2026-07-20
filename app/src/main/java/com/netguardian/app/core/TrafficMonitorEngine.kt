@@ -187,13 +187,24 @@ class TrafficMonitorEngine(private val context: Context) {
     fun getPerAppTraffic(): List<AppTrafficInfo> {
         val apps = getInstalledApps(context)
         val mode = getPrivilegeMode()
-        Log.d(TAG, "开始采集应用流量，模式: $mode，应用数: ${apps.size}")
+        Log.i(TAG, "========== 开始采集应用流量 ==========")
+        Log.i(TAG, "模式: $mode, 应用数: ${apps.size}")
 
-        return when (mode) {
+        val result = when (mode) {
             Constants.MODE_ROOT -> getPerAppTrafficRoot(apps)
             Constants.MODE_SHIZUKU -> getPerAppTrafficShizuku(apps)
             else -> getPerAppTrafficNormal(apps)
         }
+
+        Log.i(TAG, "采集完成，有流量的应用数: ${result.size}")
+        if (result.size > 0) {
+            result.take(3).forEach {
+                Log.i(TAG, "  ${it.appName}: RX=${it.totalMobile}+${it.totalWifi}, TX=${it.mobileTxBytes}+${it.wifiTxBytes}")
+            }
+        }
+        Log.i(TAG, "========================================")
+
+        return result
     }
 
     /**
