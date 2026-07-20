@@ -212,6 +212,95 @@ class RootManager private constructor() {
     }
 
     /**
+     * 获取所有UID的流量统计
+     * Android 10+ 使用 cmd netstats 命令
+     * Android 9- 使用 /proc/net/xt_qtaguid/stats
+     *
+     * @return Map<UID, Pair<rxBytes, txBytes>>
+     */
+    fun getAllUidTraffic(): Map<Int, Pair<Long, Long>> {
+        if (!_isRootAvailable.value) return emptyMap()
+
+        // 方式1：读取 /proc/net/xt_qtaguid/stats（Android 9及以下）
+        val result1 = executeRootCommand("cat /proc/net/xt_qtaguid/stats 2>/dev/null")
+        if (!result1.isNullOrEmpty()) {
+            val trafficMap = parseXtQtaguidStats(result1)
+            if (trafficMap.isNotEmpty()) {
+                Log.d(TAG, "xt_qtaguid/stats 读取到 ${trafficMap.size} 个UID")
+                return trafficMap
+            }
+        }
+
+        // 方式2：Android 10+ 用 cmd netstats（需要通过 dumpsys）
+        // dumpsys netstats 命令可以获取流量统计
+        val result2 = executeRootCommand("dumpsys netstats --uid")
+        if (!result2.isNullOrEmpty()) {
+            val trafficMap = parseNetstatsDumpsys(result2)
+            if (trafficMap.isNotEmpty()) {
+                Log.d(TAG, "dumpsys netstats 读取到 ${trafficMap.size} 个UID")
+                return trafficMap
+            }
+        }
+
+        Log.w(TAG, "Root模式无法通过任何方式获取per-UID流量")
+        return emptyMap()
+    }
+
+    /**
+     * 解析 /proc/net/xt_qtaguid/stats 输出
+     * 格式: iface acct_tag_hex uid_tag_int cnt_set rx_bytes rx_packets tx_bytes tx_packets
+     */
+    private fun parseXtQtaguidStats(output: String): Map<Int, Pair<Long, Long>> {
+        val trafficMap = mutableMapOf<Int, Pair<Long, Long>>()
+        val lines = output.lines()
+
+        for (line in lines) {
+            // 跳过表头
+            if (line.startsWith("iface") || line.isBlank()) continue
+
+            val parts = line.trim().split(Regex("\\s+"))
+            if (parts.size < 7) continue
+
+            try {
+                val uid = parts[2].toIntOrNull() ?: continue
+                val rxBytes = parts[4].toLongOrNull() ?: 0L
+                val txBytes = parts[6].toLongOrNull() ?: 0L
+
+                // 聚合同一UID的不同网络接口和tag
+                val current = trafficMap.getOrDefault(uid, 0L to 0L)
+                trafficMap[uid] = (current.first + rxBytes) to (current.second + txBytes)
+            } catch (e: Exception) {
+                // 跳过无法解析的行
+            }
+        }
+
+        return trafficMap
+    }
+
+    /**
+     * 解析 dumpsys netstats 输出
+     * 这个输出格式比较复杂，尝试提取 UID -> rx/tx 的映射
+     */
+    private fun parseNetstatsDumpsys(output: String): Map<Int, Pair<Long, Long>> {
+        val trafficMap = mutableMapOf<Int, Pair<Long, Long>>()
+        // dumpsys netstats 的输出包含 ident 块，每行格式类似:
+        // "uid=10012 tag=0x0 set=DEFAULT rb=12345 rp=10 tb=67890 tp=20"
+        val regex = Regex("""uid=(\d+).*?\brb=(\d+).*?\btb=(\d+)""")
+
+        for (line in output.lines()) {
+            val match = regex.find(line) ?: continue
+            val uid = match.groupValues[1].toIntOrNull() ?: continue
+            val rx = match.groupValues[2].toLongOrNull() ?: 0L
+            val tx = match.groupValues[3].toLongOrNull() ?: 0L
+
+            val current = trafficMap.getOrDefault(uid, 0L to 0L)
+            trafficMap[uid] = (current.first + rx) to (current.second + tx)
+        }
+
+        return trafficMap
+    }
+
+    /**
      * 屏蔽指定应用的网络连接
      * 通过iptables规则按UID屏蔽移动网络和/或WiFi
      *

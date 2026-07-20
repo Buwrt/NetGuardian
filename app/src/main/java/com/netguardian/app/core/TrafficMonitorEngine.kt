@@ -160,8 +160,9 @@ class TrafficMonitorEngine(private val context: Context) {
 
     /**
      * Root模式下获取应用流量
-     * 使用/proc/uid_stat/{uid}/下的tcp_rcv和tcp_snd文件
-     * 通过ConnectivityManager区分移动数据和WiFi流量
+     * 使用 Root 权限读取系统级 per-UID 流量统计
+     * Android 10+: dumpsys netstats
+     * Android 9-: /proc/net/xt_qtaguid/stats
      */
     private fun getPerAppTrafficRoot(apps: List<AppInfo>): List<AppTrafficInfo> {
         val trafficList = mutableListOf<AppTrafficInfo>()
@@ -171,14 +172,25 @@ class TrafficMonitorEngine(private val context: Context) {
         val isWifi = isWifiConnected(cm)
         val isMobile = isMobileConnected(cm)
 
+        // 一次性获取所有UID的流量数据（高效）
+        val uidTrafficMap = rootManager.getAllUidTraffic()
+
+        if (uidTrafficMap.isEmpty()) {
+            Log.w(TAG, "Root模式: getAllUidTraffic 返回空，回退到 NetworkStatsManager")
+            return getPerAppTrafficNormal(apps)
+        }
+
         for (app in apps) {
             try {
-                val trafficData = rootManager.getProcessTraffic(app.uid)
-                if (trafficData.totalBytes > 0) {
+                val traffic = uidTrafficMap[app.uid] ?: continue
+                val rx = traffic.first
+                val tx = traffic.second
+
+                if (rx > 0 || tx > 0) {
                     // 根据当前网络类型分配移动/WiFi流量
                     val (mobileRx, mobileTx, wifiRx, wifiTx) = classifyTraffic(
-                        totalRx = trafficData.rxBytes,
-                        totalTx = trafficData.txBytes,
+                        totalRx = rx,
+                        totalTx = tx,
                         isWifiConnected = isWifi,
                         isMobileConnected = isMobile
                     )
@@ -198,10 +210,11 @@ class TrafficMonitorEngine(private val context: Context) {
                     )
                 }
             } catch (e: Exception) {
-                Log.d(TAG, "Root模式读取 ${app.packageName} 流量失败: ${e.message}")
+                Log.d(TAG, "Root模式处理 ${app.packageName} 失败: ${e.message}")
             }
         }
 
+        Log.d(TAG, "Root模式采集到 ${trafficList.size} 个有流量的应用")
         return trafficList.sortedByDescending { it.totalBytes }
     }
 
